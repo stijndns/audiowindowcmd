@@ -2,6 +2,9 @@ import tkinter as tk
 from PIL import Image, ImageTk
 from screeninfo import get_monitors
 import os
+import platform
+
+current_os = platform.system()
 
 class ImageWindow:
     def __init__(self, root, command_queue):
@@ -66,8 +69,11 @@ class ImageWindow:
         # Ensure fullscreen occurs on monitor containing window origin
         for m in get_monitors():
             if m.x <= x < m.x + m.width and m.y <= y < m.y + m.height:
-                self.root.geometry(f"{m.width}x{m.height}+{m.x}+{m.y}")
-                self.root.overrideredirect(True)
+                if current_os == "Windows":
+                    self.root.geometry(f"{m.width}x{m.height}+{m.x}+{m.y}")
+                    self.root.overrideredirect(True)
+                if current_os == "Linux":
+                    self.root.attributes("-fullscreen", True)
                 self.render_image()
                 return m
 

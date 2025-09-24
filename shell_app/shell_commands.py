@@ -6,6 +6,10 @@ from PIL import Image, ImageTk
 
 from shell_app.utils import tab_completion
 
+import platform
+
+current_os = platform.system()
+
 # Hide pygame import message 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame
@@ -119,18 +123,23 @@ class ImageShell(cmd.Cmd):
         """
         Tab completion for image file paths.
         """
-        if not text:
-            text = ""
-        results = tab_completion(text, list(Image.registered_extensions()))
+        if current_os == "Linux" and len(line.split()) > 1:
+            clean_text = line.split()[1]
+        else:
+            clean_text = text
+
+        results = tab_completion(clean_text, list(Image.registered_extensions()), current_os)
         return results
 
     def complete_play(self, text, line, begidx, endidx):
         """
         Tab completion for audio file paths.
         """
-        if not text:
-            text = ""
-        results = tab_completion(text, [".mp3", ".wav", ".ogg"])
+        if current_os == "Linux" and len(line.split()) > 1:
+            clean_text = line.split()[1]
+        else:
+            clean_text = text
+        results = tab_completion(clean_text, [".mp3", ".wav", ".ogg"], current_os)
         return results
 
     def completenames(self, text, *ignored):

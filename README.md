@@ -40,8 +40,6 @@ From the project root directory, run:
 ```bash
 python -m shell_app.main
 ```
-> **Note:** On Windows, use `python` instead of `python3` if needed.
-
 ## Shell Commands
 
 | Command | Description | Example |
@@ -57,5 +55,5 @@ python -m shell_app.main
 
 ## Supported Formats
 
-- **Images:** All formats supported by PIL/Pillow (JPEG, PNG, GIF, etc.)
+- **Images:** [All image file formats supported by PIL/Pillow](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html)
 - **Audio:** MP3, WAV, OGG

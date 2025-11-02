@@ -62,6 +62,7 @@ class ImageShell(cmd.Cmd):
 
         # Run playback in a background thread so shell doesn’t block
         def play_thread(path):
+            path = 'assets/audio/' + path
             try:
                 pygame.mixer.init()
                 pygame.mixer.music.load(path)
@@ -128,7 +129,7 @@ class ImageShell(cmd.Cmd):
         else:
             clean_text = text
 
-        results = tab_completion(clean_text, list(Image.registered_extensions()), current_os)
+        results = tab_completion(clean_text, list(Image.registered_extensions()), current_os, 'image')
         return results
 
     def complete_play(self, text, line, begidx, endidx):
@@ -139,7 +140,7 @@ class ImageShell(cmd.Cmd):
             clean_text = line.split()[1]
         else:
             clean_text = text
-        results = tab_completion(clean_text, [".mp3", ".wav", ".ogg"], current_os)
+        results = tab_completion(clean_text, [".mp3", ".wav", ".ogg"], current_os, 'audio')
         return results
 
     def completenames(self, text, *ignored):

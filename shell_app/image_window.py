@@ -27,6 +27,7 @@ class ImageWindow:
         self.root.after(200, self.check_commands)
 
     def load_image(self, path):
+        path = 'assets/images/' + path
         if not os.path.exists(path):
             print(f"[!] File not found: {path}")
             return

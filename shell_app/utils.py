@@ -1,9 +1,15 @@
 import os
 import glob
 
-def tab_completion(text, allowed_filetypes, current_os):
+def tab_completion(text, allowed_filetypes, current_os, completion_type):
     # Expand relative paths relative to parent folder
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if completion_type == 'image':
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/images"))
+    elif completion_type == 'audio':
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/audio"))
+    else:
+        return
+
     pattern = os.path.join(base_dir, text + '*')
     matches = glob.glob(pattern)
     results = []

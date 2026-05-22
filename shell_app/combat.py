@@ -63,6 +63,7 @@ class Combatant:
     hp_current: int
     hp_max: int
     resources: dict = field(default_factory=dict)   # name → Resource
+    conditions: list = field(default_factory=list)  # free-form condition strings
     is_active: bool = True       # False when dead / removed
 
     # Default resources injected at creation time (reaction, etc.) are done
@@ -110,11 +111,27 @@ class Combatant:
         for r in self.resources.values():
             r.reset()
 
+    # ── Condition helpers ────────────────────────────────────────────────────
+
+    def add_condition(self, condition: str) -> str:
+        if condition.lower() in (c.lower() for c in self.conditions):
+            return f"[!] {self.name} already has condition '{condition}'"
+        self.conditions.append(condition)
+        return f"Added condition '{condition}' to {self.name}"
+
+    def remove_condition(self, condition: str) -> str:
+        for i, c in enumerate(self.conditions):
+            if c.lower() == condition.lower():
+                self.conditions.pop(i)
+                return f"Removed condition '{condition}' from {self.name}"
+        return f"[!] {self.name} does not have condition '{condition}'"
+
     # ── Display helpers ──────────────────────────────────────────────────────
 
     def summary(self) -> str:
         """Single-line DM summary."""
         res_str = "  ".join(str(r) for r in self.resources.values())
+        cond_str = ", ".join(self.conditions)
         status = "" if self.is_active else " [DEAD]"
         return (
             f"[{self.combatant_type.upper():7s}] "
@@ -122,6 +139,7 @@ class Combatant:
             f"Init:{self.initiative:>3}  "
             f"HP:{self.hp_current:>4}/{self.hp_max:<4}"
             + (f"  {res_str}" if res_str else "")
+            + (f"  [{cond_str}]" if cond_str else "")
             + status
         )
 
@@ -262,6 +280,7 @@ class Combat:
                     "hp_fraction": round(c.hp_fraction, 4),
                     "is_active": c.is_active,
                     "is_current_turn": c is current,
+                    "conditions": list(c.conditions),
                     "resources": {
                         k: {"current": r.current, "maximum": r.maximum}
                         for k, r in c.resources.items()

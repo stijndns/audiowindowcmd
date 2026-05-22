@@ -127,10 +127,13 @@ class CombatView:
         self._draw_header(c, snap, W, header_h, pad, scale)
 
         # ── Combatant rows ────────────────────────────────────────────────────
+        COND_EXTRA = int(18 * scale)   # extra height reserved for conditions line
         y = header_h + pad
         for entry in combatants:
-            self._draw_row(c, entry, pad, y, W, row_h, scale)
-            y += row_h + int(6 * scale)
+            has_conditions = bool(entry.get("conditions"))
+            effective_row_h = row_h + (COND_EXTRA if has_conditions else 0)
+            self._draw_row(c, entry, pad, y, W, effective_row_h, scale)
+            y += effective_row_h + int(6 * scale)
 
     def _draw_header(self, c, snap, W, header_h, pad, scale):
         """Draws the round counter and column labels."""
@@ -280,7 +283,6 @@ class CombatView:
             )
 
         # ── Initiative ────────────────────────────────────────────────────────
-        # Shown bottom-right for NPCs, below HP text for PCs
         c.create_text(
             x_right - inner_pad, y + row_h // 2 + int(8 * scale),
             text=init_str,
@@ -288,6 +290,19 @@ class CombatView:
             font=init_font,
             anchor="e",
         )
+
+        # ── Conditions line ───────────────────────────────────────────────────
+        conditions = entry.get("conditions", [])
+        if conditions:
+            cond_text = "  ·  ".join(conditions)
+            cond_y = y + row_h - int(10 * scale)
+            c.create_text(
+                text_x, cond_y,
+                text=cond_text,
+                fill=PALETTE["gold"],
+                font=(FONT_FAMILY, _scaled_font(10, scale)),
+                anchor="w",
+            )
 
     def hide(self):
         """Called when leaving combat mode."""

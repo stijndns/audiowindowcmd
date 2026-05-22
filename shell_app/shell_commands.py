@@ -24,7 +24,7 @@ class ImageShell(cmd.Cmd):
         self.commands_list = [
             "show", "fullscreen", "restore", "minimize",
             "play", "stop", "volume",
-            "combat", "next", "hp", "resource",
+            "combat", "next", "hp", "resource", "condition",
             "exit",
         ]
         self.command_queue = command_queue
@@ -372,7 +372,88 @@ Examples:
             print(f"[+] {msg}")
             self._push_combat()
 
-    # ── Exit ──────────────────────────────────────────────────────────────────
+    # ── condition ─────────────────────────────────────────────────────────────
+
+    def do_condition(self, arg):
+        """Add or remove a condition on a combatant.
+Usage:
+  condition add <name> <condition>     — add a condition
+  condition remove <name> <condition>  — remove a condition
+  condition list <name>                — list all conditions
+Examples:
+  condition add Aria Poisoned
+  condition add "Dark Knight" "Magically Silenced"
+  condition remove Aria Poisoned
+"""
+        import shlex
+        try:
+            parts = shlex.split(arg.strip())
+        except ValueError:
+            parts = arg.strip().split()
+
+        if len(parts) < 2:
+            print("Usage: condition add|remove|list <name> [condition]")
+            return
+
+        sub    = parts[0].lower()
+        c_name = parts[1]
+        c      = self._combat.get(c_name)
+        if c is None:
+            print(f"[!] Combatant '{c_name}' not found.")
+            return
+
+        if sub == "list":
+            if not c.conditions:
+                print(f"  {c.name} has no conditions.")
+            else:
+                for i, cond in enumerate(c.conditions, 1):
+                    print(f"  {i}. {cond}")
+            return
+
+        if len(parts) < 3:
+            print(f"Usage: condition {sub} <name> <condition>")
+            return
+
+        condition = parts[2]
+
+        if sub == "add":
+            msg = c.add_condition(condition)
+            print(f"[+] {msg}")
+            self._push_combat()
+        elif sub == "remove":
+            msg = c.remove_condition(condition)
+            print(f"[+] {msg}")
+            self._push_combat()
+        else:
+            print(f"[!] Unknown sub-command '{sub}'. Use add, remove, or list.")
+
+    def complete_condition(self, text, line, begidx, endidx):
+        import shlex
+        try:
+            parts = shlex.split(line[:begidx])
+        except ValueError:
+            parts = line[:begidx].split()
+
+        # Position 1: sub-command
+        if len(parts) == 1:
+            subs = ["add", "remove", "list"]
+            return [s for s in subs if s.startswith(text)]
+
+        # Position 2: combatant name
+        if len(parts) == 2:
+            names = [c.name for c in self._combat.combatants]
+            return [n for n in names if n.lower().startswith(text.lower())]
+
+        # Position 3 for remove: existing condition name
+        if len(parts) == 3 and parts[1].lower() == "remove":
+            c_name = parts[2]
+            c = self._combat.get(c_name)
+            if c:
+                return [cond for cond in c.conditions if cond.lower().startswith(text.lower())]
+
+        return []
+
+    # ── Exit ──────────────────────────────────────────────────────────────────────
 
     def do_exit(self, arg):
         """Close the application."""

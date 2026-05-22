@@ -146,7 +146,11 @@ Shorthand commands (usable outside 'combat ...'):
 
     def do_combat(self, arg):
         """Combat tracker. Type 'combat help' for full usage."""
-        parts = arg.strip().split()
+        import shlex
+        try:
+            parts = shlex.split(arg.strip())
+        except ValueError:
+            parts = arg.strip().split()
         if not parts or parts[0] in ("help", "?"):
             print(self._COMBAT_HELP)
             return

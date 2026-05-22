@@ -208,7 +208,7 @@ class CombatView:
 
         c.create_text(
             text_x, y + row_h // 2 - int(9 * scale),
-            text=entry["name"] + dead_suffix,
+            text=entry["name"].replace("_", " ") + dead_suffix,
             fill=name_color,
             font=(FONT_FAMILY, name_font_size, "bold"),
             anchor="w",

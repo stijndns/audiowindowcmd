@@ -163,7 +163,9 @@ class Combat:
         hp_max: int,
         hp_current: Optional[int] = None,
         add_reaction: bool = True,
-    ) -> Combatant:
+    ) -> Combatant | None:
+        if self.get(name) is not None:
+            return None
         c = Combatant(
             name=name,
             combatant_type=combatant_type.lower(),

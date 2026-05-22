@@ -227,6 +227,9 @@ Shorthand commands (usable outside 'combat ...'):
             hp_current=hp_cur,
             add_reaction=add_reaction,
         )
+        if c is None:
+            print(f"[!] A combatant named '{name}' already exists. Use a unique name, e.g. '{name} (Red)'.")
+            return
         print(f"[+] Added: {c.summary()}")
 
         # If combat is already active, push update immediately

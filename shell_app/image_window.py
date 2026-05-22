@@ -4,6 +4,8 @@ from screeninfo import get_monitors
 import os
 import platform
 
+from shell_app.combat_view import CombatView
+
 current_os = platform.system()
 
 class ImageWindow:
@@ -11,6 +13,7 @@ class ImageWindow:
         self.root = root
         self.root.title("AudioWindowCMD")
         self.root.geometry("800x600")
+        self.root.configure(bg="#0d1117")
 
         self.label = tk.Label(root, bg="black")
         self.label.pack(fill="both", expand=True)
@@ -20,11 +23,18 @@ class ImageWindow:
 
         self.command_queue = command_queue
 
+        # Combat view overlay
+        self._combat_mode = False
+        self.combat_view = CombatView(root)
+        self.combat_view.hide()   # hidden until combat starts
+
         # Bind window resize event to re-render the image
         self.root.bind("<Configure>", lambda e: self.render_image())
 
         # Start checking queue for commands
         self.root.after(200, self.check_commands)
+
+    # ── Image display ─────────────────────────────────────────────────────────
 
     def load_image(self, path):
         path = 'assets/images/' + path
@@ -38,6 +48,8 @@ class ImageWindow:
             print(f"[!] Error loading image: {e}")
 
     def render_image(self):
+        if self._combat_mode:
+            return
         if self.original_image is None:
             return
 
@@ -50,10 +62,7 @@ class ImageWindow:
             return
 
         img_w, img_h = img.size
-
-        # Compute scale factor to fit image inside window while preserving aspect ratio
         scale = min(win_w / img_w, win_h / img_h)
-
         new_w = max(1, int(img_w * scale))
         new_h = max(1, int(img_h * scale))
 
@@ -61,13 +70,14 @@ class ImageWindow:
         self.image = ImageTk.PhotoImage(img)
         self.label.config(image=self.image)
 
+    # ── Window controls ───────────────────────────────────────────────────────
+
     def fullscreen(self):
         self.restore()
 
         x = self.root.winfo_x()
         y = self.root.winfo_y()
 
-        # Ensure fullscreen occurs on monitor containing window origin
         for m in get_monitors():
             if m.x <= x < m.x + m.width and m.y <= y < m.y + m.height:
                 if current_os == "Windows":
@@ -90,24 +100,63 @@ class ImageWindow:
             self.restore()
         self.root.iconify()
 
+    # ── Combat mode ───────────────────────────────────────────────────────────
+
+    def enter_combat_mode(self):
+        """Hide image label, show combat canvas."""
+        self._combat_mode = True
+        self.label.pack_forget()
+        self.combat_view.show()
+        self.root.configure(bg="#0d1117")
+
+    def exit_combat_mode(self):
+        """Hide combat canvas, restore image label."""
+        self._combat_mode = False
+        self.combat_view.hide()
+        self.label.pack(fill="both", expand=True)
+        self.root.configure(bg="black")
+        self.render_image()
+
+    def update_combat_view(self, snapshot: dict):
+        """Push a fresh snapshot to the player screen."""
+        self.combat_view.render(snapshot)
+
+    # ── Command queue polling ─────────────────────────────────────────────────
+
     def check_commands(self):
         while not self.command_queue.empty():
             cmd, arg = self.command_queue.get()
+
             if cmd == "show":
+                if self._combat_mode:
+                    self.exit_combat_mode()
                 self.load_image(arg)
                 self.render_image()
+
             elif cmd == "fullscreen":
                 m = self.fullscreen()
                 print(f"[+] Fullscreen on monitor {m}")
+
             elif cmd == "restore":
                 self.restore()
                 print("[+] Restored window")
+
             elif cmd == "minimize":
                 self.minimize()
                 print("[+] Minimized window")
+
+            elif cmd == "combat_enter":
+                self.enter_combat_mode()
+
+            elif cmd == "combat_exit":
+                self.exit_combat_mode()
+
+            elif cmd == "combat_update":
+                self.update_combat_view(arg)
+
             elif cmd == "exit":
                 print("[+] Exiting...")
                 self.root.destroy()
                 return
-        # Poll queue for commands every 200 ms
+
         self.root.after(200, self.check_commands)

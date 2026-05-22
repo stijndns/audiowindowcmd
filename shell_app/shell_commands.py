@@ -250,7 +250,11 @@ Usage:
   hp <name> <±amount>    e.g.  hp Aria -15   hp Goblin +5
   hp <name> = <amount>   e.g.  hp Aria = 80  (set to exact value)
 """
-        parts = arg.strip().split()
+        import shlex
+        try:
+            parts = shlex.split(arg.strip())
+        except ValueError:
+            parts = arg.strip().split()
         if len(parts) < 2:
             print("Usage: hp <name> <±amount>  |  hp <name> = <amount>")
             return
@@ -296,9 +300,9 @@ Examples:
         # Tokenise, respecting quoted strings
         import shlex
         try:
-            parts = shlex.split(arg)
+            parts = shlex.split(arg.strip())
         except ValueError:
-            parts = arg.split()
+            parts = arg.strip().split()
 
         if not parts:
             print("Usage: resource add|reset|list|<name> …  Type 'help resource'.")

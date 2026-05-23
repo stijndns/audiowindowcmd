@@ -147,6 +147,9 @@ class ImageWindow:
 
             elif cmd == "combat_enter":
                 self.enter_combat_mode()
+                if arg is not None:
+                    self.combat_view._snapshot = arg
+                    self.root.after(50, self.combat_view._redraw)
 
             elif cmd == "combat_exit":
                 self.exit_combat_mode()

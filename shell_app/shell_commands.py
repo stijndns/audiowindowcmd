@@ -38,8 +38,7 @@ class ImageShell(cmd.Cmd):
         self.command_queue.put(("combat_update", self._combat.snapshot()))
 
     def _start_combat_view(self):
-        self.command_queue.put(("combat_enter", None))
-        self._push_combat()
+        self.command_queue.put(("combat_enter", self._combat.snapshot()))
 
     def _stop_combat_view(self):
         self.command_queue.put(("combat_exit", None))

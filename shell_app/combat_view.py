@@ -129,11 +129,19 @@ class CombatView:
         # ── Combatant rows ────────────────────────────────────────────────────
         COND_EXTRA = int(18 * scale)   # extra height reserved for conditions line
         y = header_h + pad
-        for entry in combatants:
+
+        revealed   = [e for e in combatants if e["type"] != "monster" or e.get("has_acted", True)]
+        unrevealed = [e for e in combatants if e["type"] == "monster" and not e.get("has_acted", True)]
+
+        for entry in revealed:
             has_conditions = bool(entry.get("conditions"))
             effective_row_h = row_h + (COND_EXTRA if has_conditions else 0)
             self._draw_row(c, entry, pad, y, W, effective_row_h, scale)
             y += effective_row_h + int(6 * scale)
+
+        for entry in unrevealed:
+            self._draw_unrevealed_row(c, entry, pad, y, W, row_h, scale)
+            y += row_h + int(6 * scale)
 
     def _draw_header(self, c, snap, W, header_h, pad, scale):
         """Draws the round counter and column labels."""
@@ -296,6 +304,57 @@ class CombatView:
                 font=(FONT_FAMILY, _scaled_font(10, scale)),
                 anchor="w",
             )
+
+    def _draw_unrevealed_row(self, c, entry: dict, pad: int, y: int, W: int, row_h: int, scale: float):
+        """Draws a greyed-out placeholder row for a monster that hasn't acted yet."""
+        init_col_w = int(INITIATIVE_W * scale)
+        x_left  = pad + init_col_w
+        x_right = W - pad
+        inner_pad = int(12 * scale)
+
+        # Question mark in initiative column
+        c.create_text(
+            pad + init_col_w // 2, y + row_h // 2,
+            text="?",
+            fill=PALETTE["text_dim"],
+            font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
+            anchor="center",
+        )
+
+        # Row background
+        c.create_rectangle(
+            x_left, y, x_right, y + row_h,
+            fill=PALETTE["bg"],
+            outline=PALETTE["border"],
+            width=1,
+        )
+
+        # Greyed-out accent bar
+        c.create_rectangle(
+            x_left, y, x_left + 4, y + row_h,
+            fill=PALETTE["bar_dead"],
+            outline="",
+        )
+
+        text_x = x_left + inner_pad + 6
+
+        # Greyed-out name
+        c.create_text(
+            text_x, y + row_h // 2 - int(9 * scale),
+            text=entry["name"].replace("_", " "),
+            fill=PALETTE["text_dim"],
+            font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
+            anchor="w",
+        )
+
+        # Greyed-out type badge
+        c.create_text(
+            text_x, y + row_h // 2 + int(8 * scale),
+            text="MONSTER",
+            fill=PALETTE["text_dim"],
+            font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
+            anchor="w",
+        )
 
     def hide(self):
         """Called when leaving combat mode."""

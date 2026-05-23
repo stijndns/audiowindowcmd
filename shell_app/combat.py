@@ -65,6 +65,7 @@ class Combatant:
     resources: dict = field(default_factory=dict)   # name → Resource
     conditions: list = field(default_factory=list)  # free-form condition strings
     is_active: bool = True       # False when dead / removed
+    has_acted: bool = False      # False until the combatant has taken their first turn
 
     # Default resources injected at creation time (reaction, etc.) are done
     # externally so the shell can control them.
@@ -173,6 +174,8 @@ class Combat:
             hp_current=hp_current if hp_current is not None else hp_max,
             hp_max=hp_max,
         )
+        if combatant_type.lower() in ("pc", "npc"):
+            c.has_acted = True
         if add_reaction:
             c.add_resource("Reaction", 1)
         self.combatants.append(c)
@@ -205,7 +208,9 @@ class Combat:
         self.active = True
         self.round = 1
         self.turn_index = 0
-        return f"Combat started! Round 1. First up: {self._order()[0].name}"
+        first = self._order()[0]
+        first.has_acted = True
+        return f"Combat started! Round 1. First up: {first.name}"
 
     def current_combatant(self) -> Optional[Combatant]:
         order = self._order()
@@ -220,7 +225,7 @@ class Combat:
         if not order:
             return "[!] No combatants."
 
-        # Reset reaction for the combatant who just finished their turn
+        # Reset reaction for the combatant finishing their turn
         current = order[self.turn_index % len(order)]
         if "reaction" in current.resources:
             current.resources["reaction"].reset()
@@ -233,7 +238,9 @@ class Combat:
         else:
             new_round_msg = ""
 
+        # Mark the incoming combatant as having acted (reveals monsters on player screen)
         next_c = order[self.turn_index]
+        next_c.has_acted = True
         return f"Next turn: {next_c.name} (Initiative {next_c.initiative}){new_round_msg}"
 
     def end(self) -> str:
@@ -282,6 +289,7 @@ class Combat:
                     "hp_fraction": round(c.hp_fraction, 4),
                     "is_active": c.is_active,
                     "is_current_turn": c is current,
+                    "has_acted": c.has_acted,
                     "conditions": list(c.conditions),
                     "resources": {
                         k: {"current": r.current, "maximum": r.maximum}

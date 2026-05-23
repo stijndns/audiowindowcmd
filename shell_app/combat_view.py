@@ -53,7 +53,6 @@ FONT_FAMILY  = "Consolas"   # monospaced fantasy feel; fallback handled by Tk
 PADDING      = 24
 ROW_HEIGHT   = 64           # base row height; shrinks when many combatants
 MIN_ROW_H    = 38
-BAR_H        = 10
 INITIATIVE_W = 52
 HP_COL_W     = 80           # width reserved for HP text on right
 ROUND_FONT_SIZE = 22
@@ -237,12 +236,11 @@ class CombatView:
             anchor="w",
         )
 
-        # ── HP bar (NPC / monster) or HP numbers (PC) ───────────────────────
+        # ── HP display (PC) or status text (NPC / monster) ──────────────────
         if ctype == "pc":
             # Show exact HP for player characters
             hp_str = f"{entry['hp_current']}/{entry['hp_max']} HP"
             hp_color = PALETTE["text_primary"] if not is_dead else PALETTE["text_dim"]
-
             c.create_text(
                 x_right - inner_pad, y + row_h // 2 - int(9 * scale),
                 text=hp_str,
@@ -251,44 +249,23 @@ class CombatView:
                 anchor="e",
             )
         else:
-            # Draw HP bar for monsters/NPCs
-            bar_w      = int(min(200 * scale, (W - 2 * pad) * 0.28))
-            bar_right  = x_right - inner_pad
-            bar_left   = bar_right - bar_w
-            bar_top    = y + row_h // 2 - int(BAR_H * scale * 0.5) - int(6 * scale)
-            bar_bottom = bar_top + int(BAR_H * scale)
-
-            # Track
-            c.create_rectangle(
-                bar_left, bar_top, bar_right, bar_bottom,
-                fill=PALETTE["bar_track"], outline=PALETTE["border"], width=1,
-            )
-            # Fill
-            fill_color = BAR_COLORS.get(entry["hp_bar"], PALETTE["bar_dead"])
-            fill_w = int(bar_w * entry["hp_fraction"])
-            if fill_w > 0:
-                c.create_rectangle(
-                    bar_left, bar_top,
-                    bar_left + fill_w, bar_bottom,
-                    fill=fill_color, outline="",
-                )
-
-            # State label below bar
+            # Show status label in large coloured font for monsters/NPCs
             state_labels = {
                 "green":  "Healthy",
                 "yellow": "Bloodied",
-                "orange": "Critical",
+                "orange": "Wounded",
                 "red":    "Near Death",
                 "dead":   "Defeated",
             }
-            state_text = state_labels.get(entry["hp_bar"], "")
+            state_text  = state_labels.get(entry["hp_bar"], "")
+            fill_color  = BAR_COLORS.get(entry["hp_bar"], PALETTE["bar_dead"])
+            label_color = fill_color if not is_dead else PALETTE["text_dim"]
             c.create_text(
-                (bar_left + bar_right) // 2,
-                bar_top + int(BAR_H * scale) + int(5 * scale),
+                x_right - inner_pad, y + row_h // 2 - int(9 * scale),
                 text=state_text,
-                fill=fill_color if not is_dead else PALETTE["text_dim"],
-                font=(FONT_FAMILY, _scaled_font(10, scale)),
-                anchor="n",
+                fill=label_color,
+                font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
+                anchor="e",
             )
 
 

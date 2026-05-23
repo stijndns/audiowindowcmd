@@ -154,15 +154,7 @@ class CombatView:
             anchor="w",
         )
 
-        # Column labels (right side)
-        col_font = (FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale))
-        c.create_text(
-            W - pad, header_h // 2,
-            text="INITIATIVE    HP",
-            fill=PALETTE["text_dim"],
-            font=col_font,
-            anchor="e",
-        )
+
 
     def _draw_row(self, c, entry: dict, pad: int, y: int, W: int, row_h: int, scale: float):
         """Draws a single combatant row."""
@@ -171,8 +163,21 @@ class CombatView:
         ctype      = entry["type"]
         accent     = TYPE_ACCENT.get(ctype, PALETTE["text_muted"])
 
-        x_left  = pad
+        # ── Initiative column (outside row box, left of accent bar) ──────────
+        init_col_w = int(INITIATIVE_W * scale)
+        x_left  = pad + init_col_w
         x_right = W - pad
+
+        init_color = PALETTE["current_glow"] if is_current else (
+            PALETTE["text_dim"] if is_dead else PALETTE["text_primary"]
+        )
+        c.create_text(
+            pad + init_col_w // 2, y + row_h // 2,
+            text=str(entry["initiative"]),
+            fill=init_color,
+            font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
+            anchor="center",
+        )
 
         # ── Row background ────────────────────────────────────────────────────
         bg_col     = PALETTE["active_bg"] if is_current else PALETTE["bg"]
@@ -187,8 +192,7 @@ class CombatView:
             width=border_w,
         )
 
-        # ── Accent bar on left edge ───────────────────────────────────────────
-        bar_x = x_left + 4
+        # ── Accent bar on left edge of row box ────────────────────────────────
         c.create_rectangle(
             x_left, y,
             x_left + 4, y + row_h,
@@ -224,11 +228,7 @@ class CombatView:
             anchor="w",
         )
 
-        # ── HP bar (NPC / monster) or HP numbers (PC) ─────────────────────────
-        # Reserve space on the right:  [initiative]  [hp info]
-        init_str = f"Init {entry['initiative']}"
-        init_font = (FONT_FAMILY, _scaled_font(STAT_FONT_SIZE, scale))
-
+        # ── HP bar (NPC / monster) or HP numbers (PC) ───────────────────────
         if ctype == "pc":
             # Show exact HP for player characters
             hp_str = f"{entry['hp_current']}/{entry['hp_max']} HP"
@@ -282,14 +282,7 @@ class CombatView:
                 anchor="n",
             )
 
-        # ── Initiative ────────────────────────────────────────────────────────
-        c.create_text(
-            x_right - inner_pad, y + row_h // 2 + int(8 * scale),
-            text=init_str,
-            fill=PALETTE["text_dim"],
-            font=init_font,
-            anchor="e",
-        )
+
 
         # ── Conditions line ───────────────────────────────────────────────────
         conditions = entry.get("conditions", [])

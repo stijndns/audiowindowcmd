@@ -55,8 +55,8 @@ class ImageShell(cmd.Cmd):
             names = [c.name for c in tied]
             for i, name in enumerate(names, 1):
                 print(f"    {i}. {name}")
-            print(f"    Enter desired order as space-separated numbers (1-{len(names)}),")
-            print(f"    where 1 = goes first. Current order shown above.")
+            print(f"    Enter desired turn order as space-separated numbers (1-{len(names)}),")
+            print(f"    e.g. '2 1 3' means combatant 2 goes first, 1 second, 3 third.")
             while True:
                 try:
                     raw = input("    > ").strip().split()
@@ -65,11 +65,7 @@ class ImageShell(cmd.Cmd):
                     positions = [int(x) for x in raw]
                     if sorted(positions) != list(range(1, len(names) + 1)):
                         raise ValueError
-                    # Build ordered name list: position i means names[i-1] goes at that slot
-                    ordered = [None] * len(names)
-                    for name_idx, pos in enumerate(positions):
-                        ordered[pos - 1] = names[name_idx]
-                    msg = self._combat.apply_tiebreaker_order(init_val, ordered)
+                    msg = self._combat.apply_tiebreaker_order(init_val, names, positions)
                     print(f"    [+] {msg}")
                     break
                 except (ValueError, IndexError):

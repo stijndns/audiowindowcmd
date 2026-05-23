@@ -253,16 +253,18 @@ class Combat:
             for val, count in counts.items() if count > 1
         }
 
-    def apply_tiebreaker_order(self, initiative: int, ordered_names: list[str]) -> str:
-        """Assign tiebreaker integers to combatants with the given initiative value."""
+    def apply_tiebreaker_order(self, initiative: int, names: list[str], ranks: list[int]) -> str:
+        """Assign tiebreaker integers based on rank input.
+        ranks is an ordered sequence of 1-based indices into names,
+        where position in ranks = desired turn order.
+        e.g. names=[A,B,C], ranks=[3,1,2] → C goes first, A second, B third."""
         combatants_at_init = [c for c in self.combatants if c.initiative == initiative]
-        name_lower = [n.lower() for n in ordered_names]
-        if set(name_lower) != set(c.name.lower() for c in combatants_at_init):
+        if set(n.lower() for n in names) != set(c.name.lower() for c in combatants_at_init):
             return "[!] Name list does not match combatants at that initiative value."
-        for i, name in enumerate(ordered_names):
-            c = self.get(name)
+        for tiebreaker, name_idx in enumerate(ranks):
+            c = self.get(names[name_idx - 1])
             if c:
-                c.tiebreaker = i
+                c.tiebreaker = tiebreaker
         return f"Tiebreaker order set for initiative {initiative}."
 
     def end(self) -> str:

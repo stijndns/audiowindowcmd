@@ -66,6 +66,7 @@ class Combatant:
     conditions: list = field(default_factory=list)  # free-form condition strings
     is_active: bool = True       # False when dead / removed
     has_acted: bool = False      # False until the combatant has taken their first turn
+    tiebreaker: int = 0          # Used to resolve initiative ties; lower = earlier in order
 
     # Default resources injected at creation time (reaction, etc.) are done
     # externally so the shell can control them.
@@ -199,8 +200,8 @@ class Combat:
     # ── Turn flow ────────────────────────────────────────────────────────────
 
     def _order(self) -> list[Combatant]:
-        """Return combatants sorted by initiative descending (ties: insertion order)."""
-        return sorted(self.combatants, key=lambda c: -c.initiative)
+        """Return combatants sorted by initiative descending, tiebreaker ascending."""
+        return sorted(self.combatants, key=lambda c: (-c.initiative, c.tiebreaker))
 
     def start(self) -> str:
         if not self.combatants:
@@ -242,6 +243,27 @@ class Combat:
         next_c = order[self.turn_index]
         next_c.has_acted = True
         return f"Next turn: {next_c.name} (Initiative {next_c.initiative}){new_round_msg}"
+
+    def tied_initiatives(self) -> dict[int, list[Combatant]]:
+        """Return a dict of initiative value → combatants for all values with 2+ combatants."""
+        from collections import Counter
+        counts = Counter(c.initiative for c in self.combatants)
+        return {
+            val: [c for c in self.combatants if c.initiative == val]
+            for val, count in counts.items() if count > 1
+        }
+
+    def apply_tiebreaker_order(self, initiative: int, ordered_names: list[str]) -> str:
+        """Assign tiebreaker integers to combatants with the given initiative value."""
+        combatants_at_init = [c for c in self.combatants if c.initiative == initiative]
+        name_lower = [n.lower() for n in ordered_names]
+        if set(name_lower) != set(c.name.lower() for c in combatants_at_init):
+            return "[!] Name list does not match combatants at that initiative value."
+        for i, name in enumerate(ordered_names):
+            c = self.get(name)
+            if c:
+                c.tiebreaker = i
+        return f"Tiebreaker order set for initiative {initiative}."
 
     def end(self) -> str:
         self.active = False

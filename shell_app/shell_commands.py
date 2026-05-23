@@ -44,6 +44,37 @@ class ImageShell(cmd.Cmd):
     def _stop_combat_view(self):
         self.command_queue.put(("combat_exit", None))
 
+    def _resolve_ties(self):
+        """Prompt the user to order any combatants with tied initiative values.
+        Called after combat start or after adding a combatant mid-combat."""
+        ties = self._combat.tied_initiatives()
+        if not ties:
+            return
+        for init_val, tied in ties.items():
+            print(f"[!] Initiative tie at {init_val}:")
+            names = [c.name for c in tied]
+            for i, name in enumerate(names, 1):
+                print(f"    {i}. {name}")
+            print(f"    Enter desired order as space-separated numbers (1-{len(names)}),")
+            print(f"    where 1 = goes first. Current order shown above.")
+            while True:
+                try:
+                    raw = input("    > ").strip().split()
+                    if len(raw) != len(names):
+                        raise ValueError
+                    positions = [int(x) for x in raw]
+                    if sorted(positions) != list(range(1, len(names) + 1)):
+                        raise ValueError
+                    # Build ordered name list: position i means names[i-1] goes at that slot
+                    ordered = [None] * len(names)
+                    for name_idx, pos in enumerate(positions):
+                        ordered[pos - 1] = names[name_idx]
+                    msg = self._combat.apply_tiebreaker_order(init_val, ordered)
+                    print(f"    [+] {msg}")
+                    break
+                except (ValueError, IndexError):
+                    print(f"    [!] Invalid input. Enter {len(names)} unique numbers between 1 and {len(names)}.")
+
     # ── Image / window commands ───────────────────────────────────────────────
 
     def do_show(self, arg):
@@ -166,6 +197,7 @@ Shorthand commands (usable outside 'combat ...'):
             self._cmd_combat_add(parts[1:])
 
         elif sub == "start":
+            self._resolve_ties()
             msg = self._combat.start()
             print(f"[+] {msg}")
             self._start_combat_view()
@@ -232,8 +264,9 @@ Shorthand commands (usable outside 'combat ...'):
             return
         print(f"[+] Added: {c.summary()}")
 
-        # If combat is already active, push update immediately
+        # If combat is already active, resolve any new ties then push update
         if self._combat.active:
+            self._resolve_ties()
             self._push_combat()
 
     # ── next ──────────────────────────────────────────────────────────────────

@@ -67,6 +67,7 @@ class Combatant:
     is_active: bool = True       # False when dead / removed
     has_acted: bool = False      # False until the combatant has taken their first turn
     tiebreaker: int = 0          # Used to resolve initiative ties; lower = earlier in order
+    pending: bool = False        # True when added mid-combat; enters rotation next round
 
     # Default resources injected at creation time (reaction, etc.) are done
     # externally so the shell can control them.
@@ -134,7 +135,12 @@ class Combatant:
         """Single-line DM summary."""
         res_str = "  ".join(str(r) for r in self.resources.values())
         cond_str = ", ".join(self.conditions)
-        status = "" if self.is_active else " [DEAD]"
+        if not self.is_active:
+            status = " [DEAD]"
+        elif self.pending:
+            status = " [PENDING]"
+        else:
+            status = ""
         return (
             f"[{self.combatant_type.upper():7s}] "
             f"{self.name:<20s} "
@@ -177,6 +183,8 @@ class Combat:
         )
         if combatant_type.lower() in ("pc", "npc"):
             c.has_acted = True
+        if self.active:
+            c.pending = True
         if add_reaction:
             c.add_resource("Reaction", 1)
         self.combatants.append(c)
@@ -214,15 +222,19 @@ class Combat:
         return f"Combat started! Round 1. First up: {first.name}"
 
     def current_combatant(self) -> Optional[Combatant]:
-        order = self._order()
+        order = self._non_pending_order()
         if not order:
             return None
         return order[self.turn_index % len(order)]
 
+    def _non_pending_order(self) -> list[Combatant]:
+        """Return only non-pending combatants in initiative order."""
+        return [c for c in self._order() if not c.pending]
+
     def next_turn(self) -> str:
         if not self.active:
             return "[!] Combat is not active. Use 'combat start'."
-        order = self._order()
+        order = self._non_pending_order()
         if not order:
             return "[!] No combatants."
 
@@ -232,15 +244,20 @@ class Combat:
             current.resources["reaction"].reset()
 
         self.turn_index += 1
+        new_round_msg = ""
         if self.turn_index >= len(order):
             self.turn_index = 0
             self.round += 1
+            # Clear pending flags — all pending combatants enter rotation this round
+            for c in self.combatants:
+                c.pending = False
             new_round_msg = f"\n  *** Round {self.round} begins! ***"
-        else:
-            new_round_msg = ""
+
+        # Re-fetch order after potential pending changes
+        order = self._non_pending_order()
 
         # Mark the incoming combatant as having acted (reveals monsters on player screen)
-        next_c = order[self.turn_index]
+        next_c = order[self.turn_index % len(order)]
         next_c.has_acted = True
         return f"Next turn: {next_c.name} (Initiative {next_c.initiative}){new_round_msg}"
 
@@ -314,6 +331,7 @@ class Combat:
                     "is_active": c.is_active,
                     "is_current_turn": c is current,
                     "has_acted": c.has_acted,
+                    "pending": c.pending,
                     "conditions": list(c.conditions),
                     "resources": {
                         k: {"current": r.current, "maximum": r.maximum}

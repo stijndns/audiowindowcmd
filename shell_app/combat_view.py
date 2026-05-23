@@ -130,8 +130,9 @@ class CombatView:
         COND_EXTRA = int(18 * scale)   # extra height reserved for conditions line
         y = header_h + pad
 
-        revealed   = [e for e in combatants if e["type"] != "monster" or e.get("has_acted", True)]
-        unrevealed = [e for e in combatants if e["type"] == "monster" and not e.get("has_acted", True)]
+        # Pending combatants always go to the grey section regardless of type
+        revealed   = [e for e in combatants if not e.get("pending", False) and (e["type"] != "monster" or e.get("has_acted", True))]
+        unrevealed = [e for e in combatants if e.get("pending", False) or (e["type"] == "monster" and not e.get("has_acted", True))]
 
         for entry in revealed:
             has_conditions = bool(entry.get("conditions"))
@@ -312,10 +313,11 @@ class CombatView:
         x_right = W - pad
         inner_pad = int(12 * scale)
 
-        # Question mark in initiative column
+        # Initiative column — show ? for unacted monsters, real value for pending PCs/NPCs
+        init_text = "?" if not entry.get("has_acted", True) else str(entry["initiative"])
         c.create_text(
             pad + init_col_w // 2, y + row_h // 2,
-            text="?",
+            text=init_text,
             fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
             anchor="center",
@@ -338,10 +340,13 @@ class CombatView:
 
         text_x = x_left + inner_pad + 6
 
-        # Greyed-out name
+        # Greyed-out name, with [PENDING] tag if applicable
+        display_name = entry["name"].replace("_", " ")
+        if entry.get("pending", False):
+            display_name += "  [PENDING]"
         c.create_text(
             text_x, y + row_h // 2 - int(9 * scale),
-            text=entry["name"].replace("_", " "),
+            text=display_name,
             fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
             anchor="w",

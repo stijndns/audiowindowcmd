@@ -44,32 +44,32 @@ class ImageShell(cmd.Cmd):
     def _stop_combat_view(self):
         self.command_queue.put(("combat_exit", None))
 
+    def _resolve_ties_for(self, init_val: int, tied: list):
+        """Prompt the user to order a single group of tied combatants."""
+        names = [c.name for c in tied]
+        print(f"\n[!] Initiative tie at {init_val}:")
+        for i, name in enumerate(names, 1):
+            print(f"    {i}. {name}")
+        print(f"    Enter desired turn order as space-separated numbers (1-{len(names)}),")
+        print(f"    e.g. '2 1 3' means combatant 2 goes first, 1 second, 3 third.")
+        while True:
+            try:
+                raw = input("    > ").strip().split()
+                if len(raw) != len(names):
+                    raise ValueError
+                positions = [int(x) for x in raw]
+                if sorted(positions) != list(range(1, len(names) + 1)):
+                    raise ValueError
+                msg = self._combat.apply_tiebreaker_order(init_val, names, positions)
+                print(f"    [+] {msg}")
+                break
+            except (ValueError, IndexError):
+                print(f"    [!] Invalid input. Enter {len(names)} unique numbers between 1 and {len(names)}.")
+
     def _resolve_ties(self):
-        """Prompt the user to order any combatants with tied initiative values.
-        Called after combat start or after adding a combatant mid-combat."""
-        ties = self._combat.tied_initiatives()
-        if not ties:
-            return
-        for init_val, tied in ties.items():
-            print(f"[!] Initiative tie at {init_val}:")
-            names = [c.name for c in tied]
-            for i, name in enumerate(names, 1):
-                print(f"    {i}. {name}")
-            print(f"    Enter desired turn order as space-separated numbers (1-{len(names)}),")
-            print(f"    e.g. '2 1 3' means combatant 2 goes first, 1 second, 3 third.")
-            while True:
-                try:
-                    raw = input("    > ").strip().split()
-                    if len(raw) != len(names):
-                        raise ValueError
-                    positions = [int(x) for x in raw]
-                    if sorted(positions) != list(range(1, len(names) + 1)):
-                        raise ValueError
-                    msg = self._combat.apply_tiebreaker_order(init_val, names, positions)
-                    print(f"    [+] {msg}")
-                    break
-                except (ValueError, IndexError):
-                    print(f"    [!] Invalid input. Enter {len(names)} unique numbers between 1 and {len(names)}.")
+        """Resolve all tied initiative groups — used on combat start."""
+        for init_val, tied in self._combat.tied_initiatives().items():
+            self._resolve_ties_for(init_val, tied)
 
     # ── Image / window commands ───────────────────────────────────────────────
 
@@ -260,9 +260,11 @@ Shorthand commands (usable outside 'combat ...'):
             return
         print(f"[+] Added: {c.summary()}")
 
-        # If combat is already active, resolve any new ties then push update
+        # If combat is already active, resolve ties only for this initiative value if needed
         if self._combat.active:
-            self._resolve_ties()
+            ties = self._combat.tied_initiatives()
+            if init in ties:
+                self._resolve_ties_for(init, ties[init])
             self._push_combat()
 
     # ── next ──────────────────────────────────────────────────────────────────

@@ -76,7 +76,7 @@ class Combatant:
 
     def adjust_hp(self, delta: int) -> str:
         before = self.hp_current
-        self.hp_current = max(0, min(self.hp_max, self.hp_current + delta))
+        self.hp_current = max(0, self.hp_current + delta)
         if self.hp_current == 0:
             self.is_active = False
         else:

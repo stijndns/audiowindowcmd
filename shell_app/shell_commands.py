@@ -24,7 +24,7 @@ class ImageShell(cmd.Cmd):
         self.commands_list = [
             "show", "fullscreen", "restore", "minimize",
             "play", "stop", "volume",
-            "combat", "next", "hp", "resource", "condition",
+            "combat", "next", "hp", "resource", "condition", "page",
             "exit",
         ]
         self.command_queue = command_queue
@@ -33,12 +33,12 @@ class ImageShell(cmd.Cmd):
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
-    def _push_combat(self):
+    def _push_combat(self, page: int | None = None):
         """Send the latest combat snapshot to the player window."""
-        self.command_queue.put(("combat_update", self._combat.snapshot()))
+        self.command_queue.put(("combat_update", (self._combat.snapshot(), page)))
 
     def _start_combat_view(self):
-        self.command_queue.put(("combat_enter", self._combat.snapshot()))
+        self.command_queue.put(("combat_enter", (self._combat.snapshot(), 0)))
 
     def _stop_combat_view(self):
         self.command_queue.put(("combat_exit", None))
@@ -273,7 +273,27 @@ Shorthand commands (usable outside 'combat ...'):
         msg = self._combat.next_turn()
         print(f"[+] {msg}")
         if self._combat.active:
-            self._push_combat()
+            self._push_combat(page=self._page_of_current())
+
+    def _page_of_current(self) -> int | None:
+        """Return the 0-based page index of the current combatant, or None if unknown."""
+        from shell_app.combat_view import PAGE_SIZE
+        current = self._combat.current_combatant()
+        if current is None:
+            return None
+        snap = self._combat.snapshot()
+        combatants = snap["combatants"]
+        revealed   = [e for e in combatants
+                      if not e.get("pending", False)
+                      and (e["type"] != "monster" or e.get("has_acted", True))]
+        unrevealed = [e for e in combatants
+                      if e.get("pending", False)
+                      or (e["type"] == "monster" and not e.get("has_acted", True))]
+        ordered = revealed + unrevealed
+        for i, e in enumerate(ordered):
+            if e["name"] == current.name:
+                return i // PAGE_SIZE
+        return None
 
     # ── hp ────────────────────────────────────────────────────────────────────
 
@@ -489,6 +509,31 @@ Examples:
                 return [cond for cond in c.conditions if cond.lower().startswith(text.lower())]
 
         return []
+
+    # ── page ──────────────────────────────────────────────────────────────────
+
+    def do_page(self, arg):
+        """Navigate the combat view pages.
+Usage:
+  page next       — go to next page (wraps around)
+  page prev       — go to previous page (wraps around)
+  page <number>   — jump to specific page (1-based)
+"""
+        arg = arg.strip().lower()
+        if arg == "next":
+            self.command_queue.put(("page_next", None))
+        elif arg == "prev":
+            self.command_queue.put(("page_prev", None))
+        else:
+            try:
+                n = int(arg)
+                self.command_queue.put(("page_set", n - 1))  # convert to 0-based
+            except ValueError:
+                print("Usage: page next | page prev | page <number>")
+
+    def complete_page(self, text, line, begidx, endidx):
+        options = ["next", "prev"]
+        return [o for o in options if o.startswith(text)]
 
     # ── Exit ──────────────────────────────────────────────────────────────────────
 

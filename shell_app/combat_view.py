@@ -2,36 +2,34 @@
 combat_view.py — Player-facing combat screen rendered on the Tkinter window.
 
 Replaces the image during an active combat encounter.
-The DM calls render(snapshot) whenever state changes; this redraws the canvas.
+The DM calls render(snapshot, page) whenever state changes; this redraws the canvas.
 """
 
 import tkinter as tk
-
+import math
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 PALETTE = {
-    "bg":           "#0d1117",   # near-black parchment
-    "surface":      "#161b22",
-    "surface2":     "#21262d",
-    "border":       "#30363d",
-    "text_primary": "#e6edf3",
-    "text_muted":   "#8b949e",
-    "text_dim":     "#484f58",
-    "gold":         "#d4a843",   # initiative / headings
-    "current_glow": "#f0c040",
-    "pc_accent":    "#4493f8",   # blue for player characters
-    "npc_accent":   "#bc8cff",   # purple for NPCs
-    "monster_accent":"#ff7b72",  # red-orange for monsters
-    # HP bar states
-    "bar_green":    "#3fb950",
-    "bar_yellow":   "#d29922",
-    "bar_orange":   "#e3652b",
-    "bar_red":      "#f85149",
-    "bar_dead":     "#30363d",
-    "bar_track":    "#21262d",
-    # Active turn highlight
-    "active_bg":    "#1c2128",
-    "active_border":"#d4a843",
+    "bg":            "#0d1117",
+    "surface":       "#161b22",
+    "surface2":      "#21262d",
+    "border":        "#30363d",
+    "text_primary":  "#e6edf3",
+    "text_muted":    "#8b949e",
+    "text_dim":      "#484f58",
+    "gold":          "#d4a843",
+    "current_glow":  "#f0c040",
+    "pc_accent":     "#4493f8",
+    "npc_accent":    "#bc8cff",
+    "monster_accent":"#ff7b72",
+    "bar_green":     "#3fb950",
+    "bar_yellow":    "#d29922",
+    "bar_orange":    "#e3652b",
+    "bar_red":       "#f85149",
+    "bar_dead":      "#30363d",
+    "bar_track":     "#21262d",
+    "active_bg":     "#1c2128",
+    "active_border": "#d4a843",
 }
 
 BAR_COLORS = {
@@ -48,301 +46,298 @@ TYPE_ACCENT = {
     "monster": PALETTE["monster_accent"],
 }
 
-# ── Layout constants (will be scaled to window size) ─────────────────────────
-FONT_FAMILY  = "Consolas"   # monospaced fantasy feel; fallback handled by Tk
-PADDING      = 24
-ROW_HEIGHT   = 64           # base row height; shrinks when many combatants
-MIN_ROW_H    = 38
-INITIATIVE_W = 52
-HP_COL_W     = 80           # width reserved for HP text on right
+STATE_LABELS = {
+    "green":  "Healthy",
+    "yellow": "Bloodied",
+    "orange": "Wounded",
+    "red":    "Near Death",
+    "dead":   "Defeated",
+}
+
+# ── Layout constants ──────────────────────────────────────────────────────────
+FONT_FAMILY     = "Consolas"
+PADDING         = 24
+PAGE_SIZE       = 6             # combatants per page
+INITIATIVE_W    = 52
 ROUND_FONT_SIZE = 22
 NAME_FONT_SIZE  = 15
 STAT_FONT_SIZE  = 12
 MUTED_FONT_SIZE = 11
+COND_EXTRA      = 18            # extra px (pre-scale) reserved for conditions line
 
 
 def _scaled_font(base: int, scale: float) -> int:
     return max(9, int(base * scale))
 
 
+def _page_count(total: int) -> int:
+    return max(1, math.ceil(total / PAGE_SIZE))
+
+
 class CombatView:
     """Draws the combat tracker directly onto the existing Tk root."""
 
     def __init__(self, root: tk.Tk):
-        self.root = root
-        self.canvas = tk.Canvas(
-            root,
-            bg=PALETTE["bg"],
-            highlightthickness=0,
-            bd=0,
-        )
+        self.root   = root
+        self.canvas = tk.Canvas(root, bg=PALETTE["bg"], highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
         self._snapshot: dict | None = None
-
+        self._page: int = 0          # 0-based current page index
         self.root.bind("<Configure>", lambda e: self._redraw())
 
-    def render(self, snapshot: dict):
-        """Called by the main thread (via after()) when combat state changes."""
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def render(self, snapshot: dict, page: int | None = None):
+        """Update snapshot and optionally force a specific page, then redraw."""
         self._snapshot = snapshot
+        if page is not None:
+            self._page = page
+        self._clamp_page()
         self._redraw()
+
+    def set_page(self, page: int):
+        """Jump to a specific 0-based page and redraw."""
+        self._page = page
+        self._clamp_page()
+        self._redraw()
+
+    def page_next(self):
+        total = len(self._ordered_entries()) if self._snapshot else 0
+        pages = _page_count(total)
+        self._page = (self._page + 1) % pages
+        self._redraw()
+
+    def page_prev(self):
+        total = len(self._ordered_entries()) if self._snapshot else 0
+        pages = _page_count(total)
+        self._page = (self._page - 1) % pages
+        self._redraw()
+
+    def current_page(self) -> int:
+        return self._page
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _clamp_page(self):
+        if self._snapshot is None:
+            self._page = 0
+            return
+        total = len(self._ordered_entries())
+        pages = _page_count(total)
+        self._page = max(0, min(self._page, pages - 1))
+
+    def _ordered_entries(self) -> list:
+        """Flat ordered list: revealed first, unrevealed/pending at bottom."""
+        combatants = self._snapshot["combatants"]
+        revealed   = [e for e in combatants
+                      if not e.get("pending", False)
+                      and (e["type"] != "monster" or e.get("has_acted", True))]
+        unrevealed = [e for e in combatants
+                      if e.get("pending", False)
+                      or (e["type"] == "monster" and not e.get("has_acted", True))]
+        return revealed + unrevealed
+
+    def _page_entries(self) -> list:
+        entries = self._ordered_entries()
+        start   = self._page * PAGE_SIZE
+        return entries[start : start + PAGE_SIZE]
+
+    # ── Redraw ────────────────────────────────────────────────────────────────
 
     def _redraw(self):
         if self._snapshot is None:
             return
         self.canvas.delete("all")
-        w = self.canvas.winfo_width()
-        h = self.canvas.winfo_height()
-        if w < 10 or h < 10:
+        W = self.canvas.winfo_width()
+        H = self.canvas.winfo_height()
+        if W < 10 or H < 10:
             return
-        self._draw(self._snapshot, w, h)
-
-    # ── Drawing ───────────────────────────────────────────────────────────────
+        self._draw(self._snapshot, W, H)
 
     def _draw(self, snap: dict, W: int, H: int):
-        c = self.canvas
-        combatants = snap["combatants"]
-        n = len(combatants)
-        if n == 0:
-            c.create_text(
-                W // 2, H // 2,
+        c        = self.canvas
+        all_entries = self._ordered_entries()
+        total    = len(all_entries)
+        pages    = _page_count(total)
+        entries  = self._page_entries()
+
+        if total == 0:
+            c.create_text(W // 2, H // 2,
                 text="No combatants yet.\nUse  combat add  in the shell.",
-                fill=PALETTE["text_muted"],
-                font=(FONT_FAMILY, 14),
-                justify="center",
-            )
+                fill=PALETTE["text_muted"], font=(FONT_FAMILY, 14), justify="center")
             return
 
-        # Scale factor for very large or very small windows
-        scale = min(W / 900, H / 600, 1.5)
-
-        pad = int(PADDING * scale)
+        scale    = min(W / 900, H / 600, 1.5)
+        pad      = int(PADDING * scale)
         header_h = int(60 * scale)
 
-        # Available height for the roster
-        avail_h = H - header_h - pad * 2
-        row_h = max(MIN_ROW_H, min(int(ROW_HEIGHT * scale), avail_h // n))
+        # Fixed row height: always the tall version (with conditions space)
+        avail_h  = H - header_h - pad * 2
+        row_h    = max(30, min(int((ROW_HEIGHT_BASE + COND_EXTRA) * scale),
+                               avail_h // PAGE_SIZE))
 
-        # ── Header ────────────────────────────────────────────────────────────
-        self._draw_header(c, snap, W, header_h, pad, scale)
+        self._draw_header(c, snap, W, header_h, pad, scale, self._page + 1, pages)
 
-        # ── Combatant rows ────────────────────────────────────────────────────
-        COND_EXTRA = int(18 * scale)   # extra height reserved for conditions line
         y = header_h + pad
+        gap = int(6 * scale)
+        for entry in entries:
+            is_grey = entry.get("pending", False) or \
+                      (entry["type"] == "monster" and not entry.get("has_acted", True))
+            if is_grey:
+                self._draw_unrevealed_row(c, entry, pad, y, W, row_h, scale)
+            else:
+                self._draw_row(c, entry, pad, y, W, row_h, scale)
+            y += row_h + gap
 
-        # Pending combatants always go to the grey section regardless of type
-        revealed   = [e for e in combatants if not e.get("pending", False) and (e["type"] != "monster" or e.get("has_acted", True))]
-        unrevealed = [e for e in combatants if e.get("pending", False) or (e["type"] == "monster" and not e.get("has_acted", True))]
+    # ── Header ────────────────────────────────────────────────────────────────
 
-        for entry in revealed:
-            has_conditions = bool(entry.get("conditions"))
-            effective_row_h = row_h + (COND_EXTRA if has_conditions else 0)
-            self._draw_row(c, entry, pad, y, W, effective_row_h, scale)
-            y += effective_row_h + int(6 * scale)
-
-        for entry in unrevealed:
-            self._draw_unrevealed_row(c, entry, pad, y, W, row_h, scale)
-            y += row_h + int(6 * scale)
-
-    def _draw_header(self, c, snap, W, header_h, pad, scale):
-        """Draws the round counter and column labels."""
-        round_num = snap["round"]
-        active    = snap["active"]
-
-        # Background strip
+    def _draw_header(self, c, snap, W, header_h, pad, scale, page, pages):
         c.create_rectangle(0, 0, W, header_h, fill=PALETTE["surface"], outline="")
         c.create_line(0, header_h, W, header_h, fill=PALETTE["border"], width=1)
 
-        # Round text
-        title = f"Round {round_num}" if active else "Combat — not started"
-        c.create_text(
-            pad, header_h // 2,
+        active    = snap["active"]
+        round_num = snap["round"]
+        title     = f"Round {round_num}" if active else "Combat — not started"
+        c.create_text(pad, header_h // 2,
             text=title,
             fill=PALETTE["gold"],
             font=(FONT_FAMILY, _scaled_font(ROUND_FONT_SIZE, scale), "bold"),
-            anchor="w",
-        )
+            anchor="w")
 
+        page_text = f"Page {page} / {pages}"
+        c.create_text(W - pad, header_h // 2,
+            text=page_text,
+            fill=PALETTE["text_muted"],
+            font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
+            anchor="e")
 
+    # ── Revealed row ──────────────────────────────────────────────────────────
 
-    def _draw_row(self, c, entry: dict, pad: int, y: int, W: int, row_h: int, scale: float):
-        """Draws a single combatant row."""
+    def _draw_row(self, c, entry, pad, y, W, row_h, scale):
         is_current = entry["is_current_turn"]
         is_dead    = not entry["is_active"]
         ctype      = entry["type"]
         accent     = TYPE_ACCENT.get(ctype, PALETTE["text_muted"])
 
-        # ── Initiative column (outside row box, left of accent bar) ──────────
         init_col_w = int(INITIATIVE_W * scale)
-        x_left  = pad + init_col_w
-        x_right = W - pad
+        x_left     = pad + init_col_w
+        x_right    = W - pad
+        inner_pad  = int(12 * scale)
+        text_x     = x_left + inner_pad + 6
 
-        init_color = PALETTE["current_glow"] if is_current else (
-            PALETTE["text_dim"] if is_dead else PALETTE["text_primary"]
-        )
-        c.create_text(
-            pad + init_col_w // 2, y + row_h // 2,
+        # Initiative column
+        init_color = (PALETTE["current_glow"] if is_current else
+                      PALETTE["text_dim"] if is_dead else PALETTE["text_primary"])
+        c.create_text(pad + init_col_w // 2, y + row_h // 2,
             text=str(entry["initiative"]),
             fill=init_color,
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
-            anchor="center",
-        )
+            anchor="center")
 
-        # ── Row background ────────────────────────────────────────────────────
+        # Row background
         bg_col     = PALETTE["active_bg"] if is_current else PALETTE["bg"]
         border_col = PALETTE["active_border"] if is_current else PALETTE["border"]
         border_w   = 2 if is_current else 1
+        c.create_rectangle(x_left, y, x_right, y + row_h,
+            fill=bg_col, outline=border_col, width=border_w)
 
-        c.create_rectangle(
-            x_left, y,
-            x_right, y + row_h,
-            fill=bg_col,
-            outline=border_col,
-            width=border_w,
-        )
+        # Accent bar
+        c.create_rectangle(x_left, y, x_left + 4, y + row_h,
+            fill=accent if not is_dead else PALETTE["bar_dead"], outline="")
 
-        # ── Accent bar on left edge of row box ────────────────────────────────
-        c.create_rectangle(
-            x_left, y,
-            x_left + 4, y + row_h,
-            fill=accent if not is_dead else PALETTE["bar_dead"],
-            outline="",
-        )
-
-        inner_pad = int(12 * scale)
-        text_x = x_left + inner_pad + 6
-
-        # ── Name ──────────────────────────────────────────────────────────────
-        name_color = PALETTE["text_muted"] if is_dead else (
-            PALETTE["current_glow"] if is_current else PALETTE["text_primary"]
-        )
-        name_font_size = _scaled_font(NAME_FONT_SIZE, scale)
+        # Name
+        name_color = (PALETTE["text_muted"] if is_dead else
+                      PALETTE["current_glow"] if is_current else PALETTE["text_primary"])
         dead_suffix = "  [DEAD]" if is_dead else ""
-
-        c.create_text(
-            text_x, y + row_h // 2 - int(9 * scale),
+        c.create_text(text_x, y + row_h // 2 - int(9 * scale),
             text=entry["name"].replace("_", " ") + dead_suffix,
             fill=name_color,
-            font=(FONT_FAMILY, name_font_size, "bold"),
-            anchor="w",
-        )
+            font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
+            anchor="w")
 
-        # ── Type badge ────────────────────────────────────────────────────────
-        badge_text = ctype.upper()
-        c.create_text(
-            text_x, y + row_h // 2 + int(8 * scale),
-            text=badge_text,
+        # Type badge
+        c.create_text(text_x, y + row_h // 2 + int(8 * scale),
+            text=ctype.upper(),
             fill=accent if not is_dead else PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
-            anchor="w",
-        )
+            anchor="w")
 
-        # ── HP display (PC) or status text (NPC / monster) ──────────────────
+        # HP / status
         if ctype == "pc":
-            # Show exact HP for player characters
-            hp_str = f"{entry['hp_current']}/{entry['hp_max']} HP"
+            hp_str   = f"{entry['hp_current']}/{entry['hp_max']} HP"
             hp_color = PALETTE["text_primary"] if not is_dead else PALETTE["text_dim"]
-            c.create_text(
-                x_right - inner_pad, y + row_h // 2 - int(9 * scale),
-                text=hp_str,
-                fill=hp_color,
+            c.create_text(x_right - inner_pad, y + row_h // 2 - int(9 * scale),
+                text=hp_str, fill=hp_color,
                 font=(FONT_FAMILY, _scaled_font(STAT_FONT_SIZE, scale), "bold"),
-                anchor="e",
-            )
+                anchor="e")
         else:
-            # Show status label in large coloured font for monsters/NPCs
-            state_labels = {
-                "green":  "Healthy",
-                "yellow": "Bloodied",
-                "orange": "Wounded",
-                "red":    "Near Death",
-                "dead":   "Defeated",
-            }
-            state_text  = state_labels.get(entry["hp_bar"], "")
+            state_text  = STATE_LABELS.get(entry["hp_bar"], "")
             fill_color  = BAR_COLORS.get(entry["hp_bar"], PALETTE["bar_dead"])
             label_color = fill_color if not is_dead else PALETTE["text_dim"]
-            c.create_text(
-                x_right - inner_pad, y + row_h // 2 - int(9 * scale),
-                text=state_text,
-                fill=label_color,
+            c.create_text(x_right - inner_pad, y + row_h // 2 - int(9 * scale),
+                text=state_text, fill=label_color,
                 font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
-                anchor="e",
-            )
+                anchor="e")
 
-
-
-        # ── Conditions line ───────────────────────────────────────────────────
+        # Conditions line (always reserved at bottom of row)
         conditions = entry.get("conditions", [])
         if conditions:
             cond_text = "  ·  ".join(conditions)
-            cond_y = y + row_h - int(10 * scale)
-            c.create_text(
-                text_x, cond_y,
-                text=cond_text,
-                fill=PALETTE["gold"],
+            cond_y    = y + row_h - int(10 * scale)
+            c.create_text(text_x, cond_y,
+                text=cond_text, fill=PALETTE["gold"],
                 font=(FONT_FAMILY, _scaled_font(10, scale)),
-                anchor="w",
-            )
+                anchor="w")
 
-    def _draw_unrevealed_row(self, c, entry: dict, pad: int, y: int, W: int, row_h: int, scale: float):
-        """Draws a greyed-out placeholder row for a monster that hasn't acted yet."""
+    # ── Unrevealed / pending row ──────────────────────────────────────────────
+
+    def _draw_unrevealed_row(self, c, entry, pad, y, W, row_h, scale):
         init_col_w = int(INITIATIVE_W * scale)
-        x_left  = pad + init_col_w
-        x_right = W - pad
-        inner_pad = int(12 * scale)
+        x_left     = pad + init_col_w
+        x_right    = W - pad
+        inner_pad  = int(12 * scale)
+        text_x     = x_left + inner_pad + 6
 
-        # Initiative column — show ? for unacted monsters, real value for pending PCs/NPCs
+        # Initiative: ? for unacted monsters, real value for pending PCs/NPCs
         init_text = "?" if not entry.get("has_acted", True) else str(entry["initiative"])
-        c.create_text(
-            pad + init_col_w // 2, y + row_h // 2,
-            text=init_text,
-            fill=PALETTE["text_dim"],
+        c.create_text(pad + init_col_w // 2, y + row_h // 2,
+            text=init_text, fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
-            anchor="center",
-        )
+            anchor="center")
 
         # Row background
-        c.create_rectangle(
-            x_left, y, x_right, y + row_h,
-            fill=PALETTE["bg"],
-            outline=PALETTE["border"],
-            width=1,
-        )
+        c.create_rectangle(x_left, y, x_right, y + row_h,
+            fill=PALETTE["bg"], outline=PALETTE["border"], width=1)
 
-        # Greyed-out accent bar
-        c.create_rectangle(
-            x_left, y, x_left + 4, y + row_h,
-            fill=PALETTE["bar_dead"],
-            outline="",
-        )
+        # Greyed accent bar
+        c.create_rectangle(x_left, y, x_left + 4, y + row_h,
+            fill=PALETTE["bar_dead"], outline="")
 
-        text_x = x_left + inner_pad + 6
-
-        # Greyed-out name, with [PENDING] tag if applicable
+        # Name + optional [PENDING] tag
         display_name = entry["name"].replace("_", " ")
         if entry.get("pending", False):
             display_name += "  [PENDING]"
-        c.create_text(
-            text_x, y + row_h // 2 - int(9 * scale),
-            text=display_name,
-            fill=PALETTE["text_dim"],
+        c.create_text(text_x, y + row_h // 2 - int(9 * scale),
+            text=display_name, fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
-            anchor="w",
-        )
+            anchor="w")
 
-        # Greyed-out type badge
-        c.create_text(
-            text_x, y + row_h // 2 + int(8 * scale),
-            text="MONSTER",
+        # Type badge
+        c.create_text(text_x, y + row_h // 2 + int(8 * scale),
+            text=entry["type"].upper(),
             fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
-            anchor="w",
-        )
+            anchor="w")
+
+    # ── Pack helpers ──────────────────────────────────────────────────────────
 
     def hide(self):
-        """Called when leaving combat mode."""
         self.canvas.pack_forget()
 
     def show(self):
-        """Called when entering combat mode."""
         self.canvas.pack(fill="both", expand=True)
         self._redraw()
+
+
+# Row height base (without conditions) — used in _draw
+ROW_HEIGHT_BASE = 64

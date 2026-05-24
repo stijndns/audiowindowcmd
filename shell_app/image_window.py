@@ -148,14 +148,26 @@ class ImageWindow:
             elif cmd == "combat_enter":
                 self.enter_combat_mode()
                 if arg is not None:
-                    self.combat_view._snapshot = arg
+                    snapshot, page = arg
+                    self.combat_view._snapshot = snapshot
+                    self.combat_view._page = page
                     self.root.after(50, self.combat_view._redraw)
 
             elif cmd == "combat_exit":
                 self.exit_combat_mode()
 
             elif cmd == "combat_update":
-                self.update_combat_view(arg)
+                snapshot, page = arg
+                self.combat_view.render(snapshot, page)
+
+            elif cmd == "page_next":
+                self.combat_view.page_next()
+
+            elif cmd == "page_prev":
+                self.combat_view.page_prev()
+
+            elif cmd == "page_set":
+                self.combat_view.set_page(arg)
 
             elif cmd == "exit":
                 print("[+] Exiting...")

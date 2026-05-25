@@ -111,7 +111,7 @@ class Combatant:
             return f"[!] {self.name} has no resource '{name}'"
         result = self.resources[key].adjust(delta)
         # Reveal legendary actions on first use (delta < 0 means spending)
-        if key == "legendary actions" and delta < 0:
+        if key == "legendary_actions" and delta < 0:
             self.legendary_actions_revealed = True
         return result
 
@@ -265,8 +265,8 @@ class Combat:
         # Also reset legendary actions at the start of their turn (D&D convention)
         next_c = order[self.turn_index % len(order)]
         next_c.has_acted = True
-        if "legendary actions" in next_c.resources:
-            next_c.resources["legendary actions"].reset()
+        if "legendary_actions" in next_c.resources:
+            next_c.resources["legendary_actions"].reset()
         return f"Next turn: {next_c.name} (Initiative {next_c.initiative}){new_round_msg}"
 
     def tied_initiatives(self) -> dict[int, list[Combatant]]:
@@ -348,9 +348,9 @@ class Combat:
                         if "reaction" in c.resources else None
                     ),
                     "legendary_actions": (
-                        {"current": c.resources["legendary actions"].current,
-                         "maximum": c.resources["legendary actions"].maximum}
-                        if "legendary actions" in c.resources and c.legendary_actions_revealed
+                        {"current": c.resources["legendary_actions"].current,
+                         "maximum": c.resources["legendary_actions"].maximum}
+                        if "legendary_actions" in c.resources and c.legendary_actions_revealed
                         else None
                     ),
                     "resources": {

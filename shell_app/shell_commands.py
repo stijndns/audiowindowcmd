@@ -247,7 +247,7 @@ Shorthand commands (usable outside 'combat ...'):
         if c.combatant_type not in ("npc", "monster"):
             print(f"[!] Legendary actions can only be assigned to NPCs and monsters.")
             return
-        msg = c.add_resource("Legendary Actions", maximum)
+        msg = c.add_resource("legendary_actions", maximum)
         print(f"[+] {msg}")
         self._push_combat()
 
@@ -433,8 +433,9 @@ Examples:
                 print(f"  {c.name} has no tracked resources.")
             else:
                 for r in c.resources.values():
+                    display_name = r.name.replace("_", " ").title()
                     bar = "█" * r.current + "░" * (r.maximum - r.current)
-                    print(f"  {r.name:<30s} {r.current}/{r.maximum}  [{bar}]")
+                    print(f"  {display_name:<30s} {r.current}/{r.maximum}  [{bar}]")
 
         else:
             # Interpret as: resource <name> <resource_name> <±amount>
@@ -595,10 +596,35 @@ Usage:
         return [n for n in names if n.lower().startswith(text.lower())]
 
     def complete_resource(self, text, line, begidx, endidx):
-        parts = line.split()
-        if len(parts) <= 1 or (len(parts) == 2 and not line.endswith(" ")):
+        import shlex
+        try:
+            parts = shlex.split(line[:begidx])
+        except ValueError:
+            parts = line[:begidx].split()
+
+        # Position 1: sub-command or combatant name
+        if len(parts) == 1:
             subs = ["add", "reset", "list"] + [c.name for c in self._combat.combatants]
             return [s for s in subs if s.lower().startswith(text.lower())]
+
+        # Position 2: combatant name (when sub is add/reset/list) or resource name
+        if len(parts) == 2:
+            sub = parts[1].lower()
+            if sub in ("add", "reset", "list"):
+                names = [c.name for c in self._combat.combatants]
+                return [n for n in names if n.lower().startswith(text.lower())]
+            else:
+                # Interpret as combatant name, complete resource names
+                c = self._combat.get(parts[1])
+                if c:
+                    return [k for k in c.resources if k.startswith(text.lower())]
+
+        # Position 3: resource name when sub is add/reset/list + combatant name
+        if len(parts) == 3 and parts[1].lower() not in ("add",):
+            c = self._combat.get(parts[2])
+            if c:
+                return [k for k in c.resources if k.startswith(text.lower())]
+
         return []
 
     def complete_next(self, text, line, begidx, endidx):

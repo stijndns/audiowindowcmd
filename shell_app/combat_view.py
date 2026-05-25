@@ -298,6 +298,7 @@ class CombatView:
         leg = entry.get("legendary_actions")
         if leg is not None:
             res_parts.append(f"Legendary Actions {leg['current']}/{leg['maximum']}")
+        # Note: "legendary_actions" key → display as "Legendary Actions" (underscore → space, title case)
         if res_parts:
             res_color = PALETTE["text_dim"] if is_dead else PALETTE["text_muted"]
             c.create_text(text_x, res_y,

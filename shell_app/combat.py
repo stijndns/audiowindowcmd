@@ -68,6 +68,7 @@ class Combatant:
     has_acted: bool = False      # False until the combatant has taken their first turn
     tiebreaker: int = 0          # Used to resolve initiative ties; lower = earlier in order
     pending: bool = False        # True when added mid-combat; enters rotation next round
+    legendary_actions_revealed: bool = False  # True after first legendary action is used
 
     # Default resources injected at creation time (reaction, etc.) are done
     # externally so the shell can control them.
@@ -108,7 +109,11 @@ class Combatant:
         key = name.lower()
         if key not in self.resources:
             return f"[!] {self.name} has no resource '{name}'"
-        return self.resources[key].adjust(delta)
+        result = self.resources[key].adjust(delta)
+        # Reveal legendary actions on first use (delta < 0 means spending)
+        if key == "legendary actions" and delta < 0:
+            self.legendary_actions_revealed = True
+        return result
 
     def reset_resources(self):
         for r in self.resources.values():
@@ -257,8 +262,11 @@ class Combat:
         order = self._non_pending_order()
 
         # Mark the incoming combatant as having acted (reveals monsters on player screen)
+        # Also reset legendary actions at the start of their turn (D&D convention)
         next_c = order[self.turn_index % len(order)]
         next_c.has_acted = True
+        if "legendary actions" in next_c.resources:
+            next_c.resources["legendary actions"].reset()
         return f"Next turn: {next_c.name} (Initiative {next_c.initiative}){new_round_msg}"
 
     def tied_initiatives(self) -> dict[int, list[Combatant]]:
@@ -333,6 +341,18 @@ class Combat:
                     "has_acted": c.has_acted,
                     "pending": c.pending,
                     "conditions": list(c.conditions),
+                    "legendary_actions_revealed": c.legendary_actions_revealed,
+                    "reaction": (
+                        {"current": c.resources["reaction"].current,
+                         "maximum": c.resources["reaction"].maximum}
+                        if "reaction" in c.resources else None
+                    ),
+                    "legendary_actions": (
+                        {"current": c.resources["legendary actions"].current,
+                         "maximum": c.resources["legendary actions"].maximum}
+                        if "legendary actions" in c.resources and c.legendary_actions_revealed
+                        else None
+                    ),
                     "resources": {
                         k: {"current": r.current, "maximum": r.maximum}
                         for k, r in c.resources.items()

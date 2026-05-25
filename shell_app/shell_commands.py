@@ -154,6 +154,7 @@ Combat tracker commands:
   combat end                                  — end combat, clear roster
   combat noreaction                           — add next combatant WITHOUT a reaction slot
                                                 (use before the next 'combat add')
+  combat legendary <name> <max>               — add legendary actions to a monster or NPC
   combat reset resources                      — reset all resources for all combatants
   combat show                                 — restore combat view after showing an image
 
@@ -205,6 +206,9 @@ Shorthand commands (usable outside 'combat ...'):
             print(f"[+] {msg}")
             self._stop_combat_view()
 
+        elif sub == "legendary":
+            self._cmd_combat_legendary(parts[1:])
+
         elif sub in ("show", "screen"):
             if not self._combat.combatants:
                 print("[!] No combatants added yet.")
@@ -223,6 +227,29 @@ Shorthand commands (usable outside 'combat ...'):
 
         else:
             print(f"[!] Unknown combat sub-command '{sub}'. Type 'combat help'.")
+
+    def _cmd_combat_legendary(self, parts: list[str]):
+        """Handle 'combat legendary <name> <max>' command."""
+        if len(parts) < 2:
+            print("Usage: combat legendary <name> <max>")
+            return
+        import shlex
+        name = parts[0]
+        try:
+            maximum = int(parts[1])
+        except ValueError:
+            print("[!] max must be an integer.")
+            return
+        c = self._combat.get(name)
+        if c is None:
+            print(f"[!] Combatant '{name}' not found.")
+            return
+        if c.combatant_type not in ("npc", "monster"):
+            print(f"[!] Legendary actions can only be assigned to NPCs and monsters.")
+            return
+        msg = c.add_resource("Legendary Actions", maximum)
+        print(f"[+] {msg}")
+        self._push_combat()
 
     def _cmd_combat_add(self, parts: list[str]):
         """Parse and execute 'combat add <name> <init> <type> <hp_max> [hp_cur]'."""
@@ -560,7 +587,7 @@ Usage:
         return tab_completion(clean_text, [".mp3", ".wav", ".ogg"], current_os, 'audio')
 
     def complete_combat(self, text, line, begidx, endidx):
-        subs = ["new", "add", "start", "status", "end", "show", "screen", "noreaction", "reset"]
+        subs = ["new", "add", "start", "status", "end", "show", "screen", "noreaction", "reset", "legendary"]
         return [s for s in subs if s.startswith(text)]
 
     def complete_hp(self, text, line, begidx, endidx):

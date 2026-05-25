@@ -245,28 +245,39 @@ class CombatView:
         c.create_rectangle(x_left, y, x_left + 4, y + row_h,
             fill=accent if not is_dead else PALETTE["bar_dead"], outline="")
 
+        # Layout: divide row into 4 vertical zones
+        # name_y: name line (shifted up)
+        # badge_y: type badge
+        # res_y: resources line
+        # cond_y: conditions line (bottom)
+        quarter = row_h // 4
+        name_y  = y + quarter - int(4 * scale)
+        badge_y = y + quarter * 2 - int(2 * scale)
+        res_y   = y + quarter * 3 - int(2 * scale)
+        cond_y  = y + row_h - int(10 * scale)
+
         # Name
         name_color = (PALETTE["text_muted"] if is_dead else
                       PALETTE["current_glow"] if is_current else PALETTE["text_primary"])
         dead_suffix = "  [DEAD]" if is_dead else ""
-        c.create_text(text_x, y + row_h // 2 - int(9 * scale),
+        c.create_text(text_x, name_y,
             text=entry["name"].replace("_", " ") + dead_suffix,
             fill=name_color,
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
             anchor="w")
 
         # Type badge
-        c.create_text(text_x, y + row_h // 2 + int(8 * scale),
+        c.create_text(text_x, badge_y,
             text=ctype.upper(),
             fill=accent if not is_dead else PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
             anchor="w")
 
-        # HP / status
+        # HP / status (aligned to name_y on right side)
         if ctype == "pc":
             hp_str   = f"{entry['hp_current']}/{entry['hp_max']} HP"
             hp_color = PALETTE["text_primary"] if not is_dead else PALETTE["text_dim"]
-            c.create_text(x_right - inner_pad, y + row_h // 2 - int(9 * scale),
+            c.create_text(x_right - inner_pad, name_y,
                 text=hp_str, fill=hp_color,
                 font=(FONT_FAMILY, _scaled_font(STAT_FONT_SIZE, scale), "bold"),
                 anchor="e")
@@ -274,18 +285,32 @@ class CombatView:
             state_text  = STATE_LABELS.get(entry["hp_bar"], "")
             fill_color  = BAR_COLORS.get(entry["hp_bar"], PALETTE["bar_dead"])
             label_color = fill_color if not is_dead else PALETTE["text_dim"]
-            c.create_text(x_right - inner_pad, y + row_h // 2 - int(9 * scale),
+            c.create_text(x_right - inner_pad, name_y,
                 text=state_text, fill=label_color,
                 font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
                 anchor="e")
 
+        # Resources line: reaction and legendary actions
+        res_parts = []
+        reaction = entry.get("reaction")
+        if reaction is not None:
+            res_parts.append(f"Reaction {reaction['current']}/{reaction['maximum']}")
+        leg = entry.get("legendary_actions")
+        if leg is not None:
+            res_parts.append(f"Legendary Actions {leg['current']}/{leg['maximum']}")
+        if res_parts:
+            res_color = PALETTE["text_dim"] if is_dead else PALETTE["text_muted"]
+            c.create_text(text_x, res_y,
+                text="  ·  ".join(res_parts),
+                fill=res_color,
+                font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
+                anchor="w")
+
         # Conditions line (always reserved at bottom of row)
         conditions = entry.get("conditions", [])
         if conditions:
-            cond_text = "  ·  ".join(conditions)
-            cond_y    = y + row_h - int(10 * scale)
             c.create_text(text_x, cond_y,
-                text=cond_text, fill=PALETTE["gold"],
+                text="  ·  ".join(conditions), fill=PALETTE["gold"],
                 font=(FONT_FAMILY, _scaled_font(10, scale)),
                 anchor="w")
 

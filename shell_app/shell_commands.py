@@ -30,6 +30,8 @@ class ImageShell(cmd.Cmd):
         self.command_queue = command_queue
         self.vol_user = None
         self._combat = Combat()
+        self._log_entries: list[str] = []
+        self._log_saved: bool = False
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -69,6 +71,45 @@ class ImageShell(cmd.Cmd):
         """Resolve all tied initiative groups — used on combat start."""
         for init_val, tied in self._combat.tied_initiatives().items():
             self._resolve_ties_for(init_val, tied)
+
+    # ── Combat log helpers ───────────────────────────────────────────────────
+
+    def _log_entry(self, entry: str):
+        """Append an entry to the combat log and mark log as unsaved."""
+        if self._combat.active:
+            self._log_entries.append(entry)
+            self._log_saved = False
+
+    def _log_turn_marker(self, combatant_name: str, round_num: int, new_round: bool = False):
+        """Append a turn marker, optionally with a round header."""
+        if new_round:
+            self._log_entries.append(f"{'─'*60}")
+            self._log_entries.append(f"--- Round {round_num} begins ---")
+        self._log_entries.append(f"--- Round {round_num}: {combatant_name}'s turn ---")
+
+    def _log_reset(self, include_status: bool = False):
+        """Clear the log, optionally seeding with current combat status."""
+        self._log_entries = []
+        self._log_saved = False
+        if include_status:
+            self._log_entries.append("═" * 60)
+            self._log_entries.append("COMBAT START")
+            self._log_entries.append("═" * 60)
+            for line in self._combat.status().splitlines():
+                self._log_entries.append(line)
+            self._log_entries.append("═" * 60)
+
+    def _check_unsaved_log(self) -> bool:
+        """Warn if log has unsaved entries. Returns True if safe to proceed."""
+        if not self._log_entries or self._log_saved:
+            return True
+        print("[!] Combat log has unsaved entries.")
+        while True:
+            ans = input("    Discard log and continue? (Y/N): ").strip().upper()
+            if ans == "Y":
+                return True
+            if ans == "N":
+                return False
 
     # ── Image / window commands ───────────────────────────────────────────────
 
@@ -160,6 +201,8 @@ Combat tracker commands:
   combat action <actor> heal <target> <amount>           — heal
   combat action <actor> condition <target> <condition>   — apply condition
   combat action <actor> remove_condition <target> <cond> — remove condition
+  combat log                                  — print combat log to shell
+  combat log save [filename]                  — save combat log to logs/<filename>.txt
   combat show                                 — restore combat view after showing an image
 
 Shorthand commands (usable outside 'combat ...'):
@@ -189,7 +232,11 @@ Shorthand commands (usable outside 'combat ...'):
         sub = parts[0].lower()
 
         if sub == "new":
+            if not self._check_unsaved_log():
+                return
             self._combat.end()
+            self._log_entries = []
+            self._log_saved = False
             print("[+] Combat roster cleared. Ready for new encounter.")
             self._push_combat()
 
@@ -201,17 +248,29 @@ Shorthand commands (usable outside 'combat ...'):
             msg = self._combat.start()
             print(f"[+] {msg}")
             self._start_combat_view()
+            self._log_reset(include_status=True)
+            # Log first turn marker
+            first = self._combat.current_combatant()
+            if first:
+                self._log_turn_marker(first.name, 1, new_round=False)
 
         elif sub == "status":
             print(self._combat.status())
 
         elif sub == "end":
+            if not self._check_unsaved_log():
+                return
             msg = self._combat.end()
+            self._log_entries = []
+            self._log_saved = False
             print(f"[+] {msg}")
             self._stop_combat_view()
 
         elif sub == "legendary":
             self._cmd_combat_legendary(parts[1:])
+
+        elif sub == "log":
+            self._cmd_combat_log(parts[1:])
 
         elif sub == "action":
             self._cmd_combat_action(parts[1:])
@@ -230,6 +289,7 @@ Shorthand commands (usable outside 'combat ...'):
         elif sub == "reset" and len(parts) > 1 and parts[1].lower() == "resources":
             msg = self._combat.reset_all_resources()
             print(f"[+] {msg}")
+            self._log_entry("[combat reset resources] All resources reset.")
             self._push_combat()
 
         else:
@@ -364,7 +424,54 @@ Shorthand commands (usable outside 'combat ...'):
 
         # Apply resource spend after action succeeds
         self._apply_resource_spend(actor, resource_key)
+        # Log the action
+        current = self._combat.current_combatant()
+        turn_ctx = f"Round {self._combat.round}: {current.name}'s turn" if current else "out of turn"
+        self._log_entry(f"[action | {turn_ctx}] {actor_name} → {action_type} → {target_name}" +
+                        (f": {amount}" + (f" {rest[1]}" if len(rest) > 1 else "")
+                         if action_type in ("damage", "heal") else f": {rest[0]}"))
+        if resource_key not in ("none", "special"):
+            display = resource_key.replace("_", " ").title()
+            self._log_entry(f"           {actor_name} spent a {display}.")
+        elif resource_key == "special":
+            self._log_entry(f"           {actor_name}: special case (no resource spent).")
         self._push_combat()
+
+    def _cmd_combat_log(self, parts: list[str]):
+        """Handle 'combat log' and 'combat log save [filename]'."""
+        import os
+        from datetime import datetime
+
+        if not parts or parts[0].lower() != "save":
+            # Print log to shell
+            if not self._log_entries:
+                print("[i] Combat log is empty.")
+            else:
+                print()
+                for line in self._log_entries:
+                    print(line)
+                print()
+            return
+
+        # Save to file
+        os.makedirs("logs", exist_ok=True)
+        if len(parts) >= 2:
+            filename = parts[1]
+            if not filename.endswith(".txt"):
+                filename += ".txt"
+        else:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            filename = f"combat_log_{timestamp}.txt"
+
+        filepath = os.path.join("logs", filename)
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write("\n".join(self._log_entries))
+                f.write("\n")
+            self._log_saved = True
+            print(f"[+] Combat log saved to {filepath}")
+        except Exception as e:
+            print(f"[!] Could not save log: {e}")
 
     def _cmd_combat_legendary(self, parts: list[str]):
         """Handle 'combat legendary <name> <max>' command."""
@@ -387,6 +494,7 @@ Shorthand commands (usable outside 'combat ...'):
             return
         msg = c.add_resource("legendary_actions", maximum)
         print(f"[+] {msg}")
+        self._log_entry(f"[combat legendary] {c.name}: Legendary Actions set to {maximum}")
         self._push_combat()
 
     def _cmd_combat_add(self, parts: list[str]):
@@ -429,6 +537,7 @@ Shorthand commands (usable outside 'combat ...'):
             ties = self._combat.tied_initiatives()
             if init in ties:
                 self._resolve_ties_for(init, ties[init])
+            self._log_entry(f"[combat add] {c.summary()}")
             self._push_combat()
 
     # ── next ──────────────────────────────────────────────────────────────────
@@ -438,6 +547,10 @@ Shorthand commands (usable outside 'combat ...'):
         msg = self._combat.next_turn()
         print(f"[+] {msg}")
         if self._combat.active:
+            new_round = "begins!" in msg
+            current = self._combat.current_combatant()
+            if current:
+                self._log_turn_marker(current.name, self._combat.round, new_round=new_round)
             self._push_combat(page=self._page_of_current())
 
     def _page_of_current(self) -> int | None:
@@ -497,6 +610,7 @@ Usage:
         print(f"[+] {msg}")
         if not c.is_active:
             print(f"    {c.name} has dropped to 0 HP!")
+        self._log_entry(f"[hp] {msg}")
         self._push_combat()
 
     # ── resource ──────────────────────────────────────────────────────────────
@@ -545,6 +659,7 @@ Examples:
                 return
             msg = c.add_resource(res_name, maximum)
             print(f"[+] {msg}")
+            self._log_entry(f"[resource add] {msg}")
             self._push_combat()
 
         elif sub == "reset":
@@ -557,6 +672,7 @@ Examples:
                 return
             c.reset_resources()
             print(f"[+] Resources reset for {c.name}.")
+            self._log_entry(f"[resource reset] All resources reset for {c.name}.")
             self._push_combat()
 
         elif sub == "list":
@@ -593,6 +709,7 @@ Examples:
                 return
             msg = c.adjust_resource(res_name, delta)
             print(f"[+] {msg}")
+            self._log_entry(f"[resource] {msg}")
             self._push_combat()
 
     # ── condition ─────────────────────────────────────────────────────────────
@@ -642,10 +759,12 @@ Examples:
         if sub == "add":
             msg = c.add_condition(condition)
             print(f"[+] {msg}")
+            self._log_entry(f"[condition add] {msg}")
             self._push_combat()
         elif sub == "remove":
             msg = c.remove_condition(condition)
             print(f"[+] {msg}")
+            self._log_entry(f"[condition remove] {msg}")
             self._push_combat()
         else:
             print(f"[!] Unknown sub-command '{sub}'. Use add, remove, or list.")
@@ -733,7 +852,7 @@ Usage:
             parts = line[:begidx].split()
 
         top_subs = ["new", "add", "start", "status", "end", "show", "screen",
-                    "noreaction", "reset", "legendary", "action"]
+                    "noreaction", "reset", "legendary", "action", "log"]
 
         # Position 1: top-level subcommand
         if len(parts) == 1:

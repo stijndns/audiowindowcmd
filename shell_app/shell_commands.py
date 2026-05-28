@@ -156,6 +156,10 @@ Combat tracker commands:
                                                 (use before the next 'combat add')
   combat legendary <name> <max>               — add legendary actions to a monster or NPC
   combat reset resources                      — reset all resources for all combatants
+  combat action <actor> damage <target> <amount> [type]  — deal damage
+  combat action <actor> heal <target> <amount>           — heal
+  combat action <actor> condition <target> <condition>   — apply condition
+  combat action <actor> remove_condition <target> <cond> — remove condition
   combat show                                 — restore combat view after showing an image
 
 Shorthand commands (usable outside 'combat ...'):
@@ -209,6 +213,9 @@ Shorthand commands (usable outside 'combat ...'):
         elif sub == "legendary":
             self._cmd_combat_legendary(parts[1:])
 
+        elif sub == "action":
+            self._cmd_combat_action(parts[1:])
+
         elif sub in ("show", "screen"):
             if not self._combat.combatants:
                 print("[!] No combatants added yet.")
@@ -227,6 +234,137 @@ Shorthand commands (usable outside 'combat ...'):
 
         else:
             print(f"[!] Unknown combat sub-command '{sub}'. Type 'combat help'.")
+
+    def _prompt_resource_spend(self, actor) -> str:
+        """Prompt DM to choose which resource the actor spends for an out-of-turn action.
+        Returns 'reaction', 'legendary_actions', or 'special'."""
+        options = []
+        current = self._combat.current_combatant()
+        is_current_turn = current is not None and current.name == actor.name
+
+        if is_current_turn:
+            return "none"   # no prompt needed
+
+        # Build options list
+        if "reaction" in actor.resources:
+            r = actor.resources["reaction"]
+            warn = " [EMPTY]" if r.current == 0 else ""
+            options.append(("reaction", f"Reaction ({r.current}/{r.maximum}){warn}"))
+        if "legendary_actions" in actor.resources:
+            r = actor.resources["legendary_actions"]
+            warn = " [EMPTY]" if r.current == 0 else ""
+            options.append(("legendary_actions", f"Legendary Actions ({r.current}/{r.maximum}){warn}"))
+        options.append(("special", "Special case (no resource spent)"))
+
+        print(f"[?] {actor.name} is acting outside their turn. Resource spent?")
+        for i, (_, label) in enumerate(options, 1):
+            print(f"    {i}. {label}")
+        while True:
+            try:
+                raw = input("    > ").strip()
+                idx = int(raw) - 1
+                if not 0 <= idx < len(options):
+                    raise ValueError
+                key, label = options[idx]
+                return key
+            except (ValueError, IndexError):
+                print(f"    [!] Enter a number between 1 and {len(options)}.")
+
+    def _apply_resource_spend(self, actor, resource_key: str):
+        """Apply the chosen resource spend and print the result."""
+        if resource_key in ("none", "special"):
+            if resource_key == "special":
+                print(f"    [i] Special case — no resource spent for {actor.name}.")
+            return
+        msg = actor.adjust_resource(resource_key, -1)
+        display = resource_key.replace("_", " ").title()
+        print(f"    [+] {actor.name} spent a {display}. ({msg})")
+
+    def _cmd_combat_action(self, parts: list[str]):
+        """Handle 'combat action <actor> <type> <target> [args...]'."""
+        ACTION_TYPES = ["damage", "heal", "condition", "remove_condition"]
+
+        if len(parts) < 3:
+            print("Usage: combat action <actor> damage|heal|condition|remove_condition <target> [args]")
+            return
+
+        actor_name  = parts[0]
+        action_type = parts[1].lower()
+        target_name = parts[2]
+        rest        = parts[3:]
+
+        if action_type not in ACTION_TYPES:
+            print(f"[!] Unknown action type '{action_type}'. Choose: {', '.join(ACTION_TYPES)}")
+            return
+
+        actor = self._combat.get(actor_name)
+        if actor is None:
+            print(f"[!] Actor '{actor_name}' not found.")
+            return
+
+        target = self._combat.get(target_name)
+        if target is None:
+            print(f"[!] Target '{target_name}' not found.")
+            return
+
+        # Prompt resource spend if actor is not the current combatant
+        resource_key = self._prompt_resource_spend(actor)
+
+        # Execute the action
+        if action_type == "damage":
+            if not rest:
+                print("[!] Usage: combat action <actor> damage <target> <amount> [type]")
+                return
+            try:
+                amount = int(rest[0])
+            except ValueError:
+                print("[!] Amount must be an integer.")
+                return
+            dmg_type = rest[1] if len(rest) > 1 else None
+            before = target.hp_current
+            msg = target.adjust_hp(-amount)
+            type_str = f" {dmg_type}" if dmg_type else ""
+            print(f"[+] {actor_name} → damage → {target_name}: {amount}{type_str}  ({msg})")
+            if not target.is_active:
+                print(f"    {target.name} has dropped to 0 HP!")
+
+        elif action_type == "heal":
+            if not rest:
+                print("[!] Usage: combat action <actor> heal <target> <amount>")
+                return
+            try:
+                amount = int(rest[0])
+            except ValueError:
+                print("[!] Amount must be an integer.")
+                return
+            msg = target.adjust_hp(amount)
+            print(f"[+] {actor_name} → heal → {target_name}: {amount}  ({msg})")
+
+        elif action_type == "condition":
+            if not rest:
+                print("[!] Usage: combat action <actor> condition <target> <condition>")
+                return
+            condition = rest[0]
+            msg = target.add_condition(condition)
+            if msg.startswith("[!]"):
+                print(f"    [!] Warning: {msg}")
+            else:
+                print(f"[+] {actor_name} → condition → {target_name}: {condition}")
+
+        elif action_type == "remove_condition":
+            if not rest:
+                print("[!] Usage: combat action <actor> remove_condition <target> <condition>")
+                return
+            condition = rest[0]
+            msg = target.remove_condition(condition)
+            if msg.startswith("[!]"):
+                print(f"    {msg}")
+            else:
+                print(f"[+] {actor_name} → remove_condition → {target_name}: {condition}")
+
+        # Apply resource spend after action succeeds
+        self._apply_resource_spend(actor, resource_key)
+        self._push_combat()
 
     def _cmd_combat_legendary(self, parts: list[str]):
         """Handle 'combat legendary <name> <max>' command."""
@@ -588,8 +726,44 @@ Usage:
         return tab_completion(clean_text, [".mp3", ".wav", ".ogg"], current_os, 'audio')
 
     def complete_combat(self, text, line, begidx, endidx):
-        subs = ["new", "add", "start", "status", "end", "show", "screen", "noreaction", "reset", "legendary"]
-        return [s for s in subs if s.startswith(text)]
+        import shlex
+        try:
+            parts = shlex.split(line[:begidx])
+        except ValueError:
+            parts = line[:begidx].split()
+
+        top_subs = ["new", "add", "start", "status", "end", "show", "screen",
+                    "noreaction", "reset", "legendary", "action"]
+
+        # Position 1: top-level subcommand
+        if len(parts) == 1:
+            return [s for s in top_subs if s.startswith(text)]
+
+        if parts[1].lower() != "action":
+            return [s for s in top_subs if s.startswith(text)]
+
+        action_types = ["damage", "heal", "condition", "remove_condition"]
+        names = [c.name for c in self._combat.combatants]
+
+        # Position 2 (action): actor name
+        if len(parts) == 2:
+            return [n for n in names if n.lower().startswith(text.lower())]
+
+        # Position 3 (action): action type
+        if len(parts) == 3:
+            return [a for a in action_types if a.startswith(text)]
+
+        # Position 4 (action): target name
+        if len(parts) == 4:
+            return [n for n in names if n.lower().startswith(text.lower())]
+
+        # Position 5 (action): condition name for remove_condition
+        if len(parts) == 5 and parts[3].lower() == "remove_condition":
+            target = self._combat.get(parts[4])
+            if target:
+                return [cond for cond in target.conditions if cond.lower().startswith(text.lower())]
+
+        return []
 
     def complete_hp(self, text, line, begidx, endidx):
         names = [c.name for c in self._combat.combatants]

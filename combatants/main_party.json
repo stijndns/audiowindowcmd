@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Xyra",
+    "type": "pc",
+    "hp_max": 200,
+    "resources": [
+      {
+        "name": "Reaction",
+        "maximum": 1
+      }
+    ]
+  },
+  {
+    "name": "Meric",
+    "type": "pc",
+    "hp_max": 200,
+    "resources": [
+      {
+        "name": "Reaction",
+        "maximum": 1
+      }
+    ]
+  },
+  {
+    "name": "Sigurd",
+    "type": "pc",
+    "hp_max": 200,
+    "resources": [
+      {
+        "name": "Reaction",
+        "maximum": 1
+      }
+    ]
+  },
+  {
+    "name": "Harold",
+    "type": "pc",
+    "hp_max": 200,
+    "resources": [
+      {
+        "name": "Reaction",
+        "maximum": 1
+      }
+    ]
+  }
+]

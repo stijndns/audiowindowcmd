@@ -201,6 +201,8 @@ Combat tracker commands:
   combat action <actor> heal <target> <amount>           — heal
   combat action <actor> condition <target> <condition>   — apply condition
   combat action <actor> remove_condition <target> <cond> — remove condition
+  combat export <filename>                    — export roster to combatants/<filename>.json
+  combat import <filename>                    — import roster from combatants/<filename>.json
   combat log                                  — print combat log to shell
   combat log save [filename]                  — save combat log to logs/<filename>.txt
   combat show                                 — restore combat view after showing an image
@@ -274,6 +276,12 @@ Shorthand commands (usable outside 'combat ...'):
 
         elif sub == "action":
             self._cmd_combat_action(parts[1:])
+
+        elif sub == "export":
+            self._cmd_combat_export(parts[1:])
+
+        elif sub == "import":
+            self._cmd_combat_import(parts[1:])
 
         elif sub in ("show", "screen"):
             if not self._combat.combatants:
@@ -435,6 +443,119 @@ Shorthand commands (usable outside 'combat ...'):
             self._log_entry(f"           {actor_name} spent a {display}.")
         elif resource_key == "special":
             self._log_entry(f"           {actor_name}: special case (no resource spent).")
+        self._push_combat()
+
+    def _cmd_combat_export(self, parts: list[str]):
+        """Handle 'combat export <filename>'."""
+        import json, os
+
+        if self._combat.active:
+            print("[!] Cannot export during active combat.")
+            return
+        if not parts:
+            print("Usage: combat export <filename>")
+            return
+        if not self._combat.combatants:
+            print("[!] No combatants to export.")
+            return
+
+        filename = parts[0]
+        if not filename.endswith(".json"):
+            filename += ".json"
+        os.makedirs("combatants", exist_ok=True)
+        filepath = os.path.join("combatants", filename)
+
+        data = []
+        for c in self._combat.combatants:
+            entry = {
+                "name":      c.name,
+                "type":      c.combatant_type,
+                "hp_max":    c.hp_max,
+                "resources": [
+                    {"name": r.name, "maximum": r.maximum}
+                    for r in c.resources.values()
+                ],
+            }
+            data.append(entry)
+
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            print(f"[+] Exported {len(data)} combatant(s) to {filepath}")
+        except Exception as e:
+            print(f"[!] Could not export: {e}")
+
+    def _cmd_combat_import(self, parts: list[str]):
+        """Handle 'combat import <filename>'."""
+        import json, os
+
+        if self._combat.active:
+            print("[!] Cannot import during active combat.")
+            return
+        if not parts:
+            print("Usage: combat import <filename>")
+            return
+
+        filename = parts[0]
+        if not filename.endswith(".json"):
+            filename += ".json"
+        filepath = os.path.join("combatants", filename)
+
+        if not os.path.exists(filepath):
+            print(f"[!] File not found: {filepath}")
+            return
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[!] Could not read file: {e}")
+            return
+
+        imported = 0
+        overwritten = 0
+        for entry in data:
+            name  = entry["name"]
+            ctype = entry["type"]
+            hp_max = entry["hp_max"]
+            resources = entry.get("resources", [])
+
+            # Warn and remove if duplicate
+            existing = self._combat.get(name)
+            if existing is not None:
+                print(f"[!] {name} already exists — overwriting.")
+                self._combat.remove_combatant(name)
+                overwritten += 1
+
+            # Prompt for initiative
+            while True:
+                try:
+                    raw = input(f"  Initiative for {name} ({ctype.upper()}, {hp_max} HP): ").strip()
+                    initiative = int(raw)
+                    break
+                except ValueError:
+                    print("  [!] Please enter an integer.")
+
+            # Add without default reaction — we restore from file
+            c = self._combat.add_combatant(
+                name=name,
+                combatant_type=ctype,
+                initiative=initiative,
+                hp_max=hp_max,
+                add_reaction=False,
+            )
+            if c is None:
+                print(f"[!] Failed to add {name} (duplicate after removal — this shouldn't happen).")
+                continue
+
+            # Restore resources
+            for r in resources:
+                c.add_resource(r["name"], r["maximum"])
+
+            print(f"[+] Imported: {c.summary()}")
+            imported += 1
+
+        print(f"\n[+] Import complete: {imported} added, {overwritten} overwritten.")
         self._push_combat()
 
     def _cmd_combat_log(self, parts: list[str]):
@@ -852,7 +973,7 @@ Usage:
             parts = line[:begidx].split()
 
         top_subs = ["new", "add", "start", "status", "end", "show", "screen",
-                    "noreaction", "reset", "legendary", "action", "log"]
+                    "noreaction", "reset", "legendary", "action", "log", "export", "import"]
 
         # Position 1: top-level subcommand
         if len(parts) == 1:

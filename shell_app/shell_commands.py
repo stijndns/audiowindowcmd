@@ -311,6 +311,48 @@ Shorthand commands (usable outside 'combat ...'):
         else:
             print(f"[!] Unknown combat sub-command '{sub}'. Type 'combat help'.")
 
+    def _prompt_zero_hp_status(self, combatant) -> str:
+        """Prompt DM to choose status when a combatant drops to 0 or below HP.
+        If already dying, only offer dead or remain dying.
+        Returns the chosen status string."""
+        already_dying = combatant.status == "dying"
+        if already_dying:
+            print(f"[?] {combatant.name} is already DYING and took more damage.")
+            print("    1. Dead")
+            print("    2. Remain Dying")
+            options = ["dead", "dying"]
+        else:
+            print(f"[?] {combatant.name} dropped to {combatant.hp_current} HP. Status?")
+            print("    1. Dead")
+            print("    2. Dying")
+            print("    3. Incapacitated")
+            options = ["dead", "dying", "incapacitated"]
+        while True:
+            try:
+                idx = int(input("    > ").strip()) - 1
+                if not 0 <= idx < len(options):
+                    raise ValueError
+                return options[idx]
+            except (ValueError, IndexError):
+                print(f"    [!] Enter a number between 1 and {len(options)}.")
+
+    def _apply_zero_hp_status(self, combatant):
+        """Check if combatant is at or below 0 HP and prompt for status if needed."""
+        if combatant.hp_current > 0:
+            # Recovered — restore to active
+            if combatant.status in ("dying", "incapacitated"):
+                combatant.status = "active"
+                print(f"    [+] {combatant.name} recovered and is now active.")
+                self._log_entry(f"[status] {combatant.name} recovered to active.")
+            return
+        # At or below 0 — prompt if not already dead
+        if combatant.status == "dead":
+            return
+        new_status = self._prompt_zero_hp_status(combatant)
+        combatant.status = new_status
+        print(f"    [+] {combatant.name} is now [{new_status.upper()}].")
+        self._log_entry(f"[status] {combatant.name} → [{new_status.upper()}].")
+
     def _prompt_resource_spend(self, actor) -> str:
         """Prompt DM to choose which resource the actor spends for an out-of-turn action.
         Returns 'reaction', 'legendary_actions', or 'special'."""
@@ -401,8 +443,7 @@ Shorthand commands (usable outside 'combat ...'):
             msg = target.adjust_hp(-amount)
             type_str = f" {dmg_type}" if dmg_type else ""
             print(f"[+] {actor_name} → damage → {target_name}: {amount}{type_str}  ({msg})")
-            if not target.is_active:
-                print(f"    {target.name} has dropped to 0 HP!")
+            self._apply_zero_hp_status(target)
 
         elif action_type == "heal":
             if not rest:
@@ -415,6 +456,7 @@ Shorthand commands (usable outside 'combat ...'):
                 return
             msg = target.adjust_hp(amount)
             print(f"[+] {actor_name} → heal → {target_name}: {amount}  ({msg})")
+            self._apply_zero_hp_status(target)
 
         elif action_type == "condition":
             if not rest:
@@ -789,8 +831,7 @@ Usage:
             return
 
         print(f"[+] {msg}")
-        if not c.is_active:
-            print(f"    {c.name} has dropped to 0 HP!")
+        self._apply_zero_hp_status(c)
         self._log_entry(f"[hp] {msg}")
         self._push_combat()
 

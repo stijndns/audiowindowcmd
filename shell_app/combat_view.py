@@ -132,17 +132,23 @@ class CombatView:
         self._page = max(0, min(self._page, pages - 1))
 
     def _ordered_entries(self) -> list:
-        """Flat ordered list: revealed first, unrevealed/pending at bottom."""
+        """All combatants in initiative order, with pending/left_combat/unacted monsters at bottom."""
         combatants = self._snapshot["combatants"]
-        revealed   = [e for e in combatants
-                      if not e.get("pending", False)
-                      and not e.get("left_combat", False)
-                      and (e["type"] != "monster" or e.get("has_acted", True))]
-        unrevealed = [e for e in combatants
-                      if e.get("pending", False)
-                      or e.get("left_combat", False)
-                      or (e["type"] == "monster" and not e.get("has_acted", True))]
-        return revealed + unrevealed
+        def _goes_to_bottom(e):
+            return (e.get("pending", False)
+                    or e.get("left_combat", False)
+                    or (e["type"] == "monster" and not e.get("has_acted", True)))
+        in_order = [e for e in combatants if not _goes_to_bottom(e)]
+        bottom   = [e for e in combatants if _goes_to_bottom(e)]
+        return in_order + bottom
+
+    @staticmethod
+    def _is_greyed(e) -> bool:
+        """Return True if this entry should be rendered via _draw_unrevealed_row."""
+        return (e.get("pending", False)
+                or e.get("left_combat", False)
+                or e.get("status", "active") in ("dead", "incapacitated")
+                or (e["type"] == "monster" and not e.get("has_acted", True)))
 
     def _page_entries(self) -> list:
         entries = self._ordered_entries()
@@ -189,9 +195,7 @@ class CombatView:
         y = header_h + pad
         gap = int(6 * scale)
         for entry in entries:
-            is_grey = entry.get("pending", False) or \
-                      (entry["type"] == "monster" and not entry.get("has_acted", True))
-            if is_grey:
+            if self._is_greyed(entry):
                 self._draw_unrevealed_row(c, entry, pad, y, W, row_h, scale)
             else:
                 self._draw_row(c, entry, pad, y, W, row_h, scale)
@@ -262,7 +266,10 @@ class CombatView:
 
     def _draw_row(self, c, entry, pad, y, W, row_h, scale):
         is_current = entry["is_current_turn"]
-        is_dead    = not entry["is_active"]
+        status     = entry.get("status", "active")
+        is_dead    = status in ("dead", "incapacitated")
+        is_dying   = status == "dying"
+        is_dimmed  = is_dead or is_dying   # greyed colours but may still show turn indicator
         ctype      = entry["type"]
         accent     = TYPE_ACCENT.get(ctype, PALETTE["text_muted"])
 
@@ -274,7 +281,7 @@ class CombatView:
 
         # Initiative column
         init_color = (PALETTE["current_glow"] if is_current else
-                      PALETTE["text_dim"] if is_dead else PALETTE["text_primary"])
+                      PALETTE["text_dim"] if is_dimmed else PALETTE["text_primary"])
         c.create_text(pad + init_col_w // 2, y + row_h // 2,
             text=str(entry["initiative"]),
             fill=init_color,
@@ -301,7 +308,7 @@ class CombatView:
 
         # Accent bar
         c.create_rectangle(x_left, y, x_left + 4, y + row_h,
-            fill=accent if not is_dead else PALETTE["bar_dead"], outline="")
+            fill=accent if not is_dimmed else PALETTE["bar_dead"], outline="")
 
         # Layout: divide row into 4 vertical zones
         # name_y: name line (shifted up)
@@ -315,11 +322,14 @@ class CombatView:
         cond_y  = y + row_h - int(10 * scale)
 
         # Name
-        name_color = (PALETTE["text_muted"] if is_dead else
+        name_color = (PALETTE["text_dim"] if is_dimmed and not is_current else
                       PALETTE["current_glow"] if is_current else PALETTE["text_primary"])
-        dead_suffix = "  [DEAD]" if is_dead else ""
+        if is_dying:
+            status_suffix = "  [DYING]"
+        else:
+            status_suffix = ""
         c.create_text(text_x, name_y,
-            text=entry["name"].replace("_", " ") + dead_suffix,
+            text=entry["name"].replace("_", " ") + status_suffix,
             fill=name_color,
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
             anchor="w")
@@ -327,14 +337,14 @@ class CombatView:
         # Type badge
         c.create_text(text_x, badge_y,
             text=ctype.upper(),
-            fill=accent if not is_dead else PALETTE["text_dim"],
+            fill=accent if not is_dimmed else PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
             anchor="w")
 
         # HP / status (aligned to name_y on right side)
         if ctype == "pc":
             hp_str   = f"{entry['hp_current']}/{entry['hp_max']} HP"
-            hp_color = PALETTE["text_primary"] if not is_dead else PALETTE["text_dim"]
+            hp_color = PALETTE["text_primary"] if not is_dimmed else PALETTE["text_dim"]
             c.create_text(x_right - inner_pad, name_y,
                 text=hp_str, fill=hp_color,
                 font=(FONT_FAMILY, _scaled_font(STAT_FONT_SIZE, scale), "bold"),
@@ -342,7 +352,7 @@ class CombatView:
         else:
             state_text  = STATE_LABELS.get(entry["hp_bar"], "")
             fill_color  = BAR_COLORS.get(entry["hp_bar"], PALETTE["bar_dead"])
-            label_color = fill_color if not is_dead else PALETTE["text_dim"]
+            label_color = fill_color if not is_dimmed else PALETTE["text_dim"]
             c.create_text(x_right - inner_pad, name_y,
                 text=state_text, fill=label_color,
                 font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
@@ -358,7 +368,7 @@ class CombatView:
             res_parts.append(f"Legendary Actions {leg['current']}/{leg['maximum']}")
         # Note: "legendary_actions" key → display as "Legendary Actions" (underscore → space, title case)
         if res_parts:
-            res_color = PALETTE["text_dim"] if is_dead else PALETTE["text_muted"]
+            res_color = PALETTE["text_dim"] if is_dimmed else PALETTE["text_muted"]
             c.create_text(text_x, res_y,
                 text="  ·  ".join(res_parts),
                 fill=res_color,
@@ -383,8 +393,9 @@ class CombatView:
         text_x     = x_left + inner_pad + 6
 
         # Initiative: ? for unacted monsters, real value for pending/left_combat
-        init_text = "?" if (not entry.get("has_acted", True)
-                            and not entry.get("left_combat", False))                         else str(entry["initiative"])
+        non_mystery = (entry.get("left_combat", False)
+                       or entry.get("status", "active") != "active")
+        init_text = "?" if (not entry.get("has_acted", True) and not non_mystery)                         else str(entry["initiative"])
         c.create_text(pad + init_col_w // 2, y + row_h // 2,
             text=init_text, fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
@@ -400,7 +411,14 @@ class CombatView:
 
         # Name + status tag
         display_name = entry["name"].replace("_", " ")
-        if entry.get("left_combat", False):
+        entry_status = entry.get("status", "active")
+        if entry_status == "dead":
+            display_name += "  [DEAD]"
+        elif entry_status == "dying":
+            display_name += "  [DYING]"
+        elif entry_status == "incapacitated":
+            display_name += "  [INCAPACITATED]"
+        elif entry.get("left_combat", False):
             display_name += "  [LEFT COMBAT]"
         elif entry.get("pending", False):
             display_name += "  [PENDING]"

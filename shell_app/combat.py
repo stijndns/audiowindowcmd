@@ -64,7 +64,7 @@ class Combatant:
     hp_max: int
     resources: dict = field(default_factory=dict)   # name → Resource
     conditions: list = field(default_factory=list)  # free-form condition strings
-    is_active: bool = True       # False when dead / removed
+    status: str = "active"       # "active", "dying", "dead", "incapacitated"
     has_acted: bool = False      # False until the combatant has taken their first turn
     tiebreaker: int = 0          # Used to resolve initiative ties; lower = earlier in order
     pending: bool = False        # True when added mid-combat; enters rotation next round
@@ -75,15 +75,15 @@ class Combatant:
     # Default resources injected at creation time (reaction, etc.) are done
     # externally so the shell can control them.
 
+    @property
+    def is_active(self) -> bool:
+        return self.status == "active"
+
     # ── HP helpers ──────────────────────────────────────────────────────────
 
     def adjust_hp(self, delta: int) -> str:
         before = self.hp_current
         self.hp_current = max(0, self.hp_current + delta)
-        if self.hp_current == 0:
-            self.is_active = False
-        else:
-            self.is_active = True
         return f"{self.name} HP: {before} → {self.hp_current}/{self.hp_max}"
 
     def set_hp(self, value: int) -> str:
@@ -142,8 +142,12 @@ class Combatant:
         """Single-line DM summary."""
         res_str = "  ".join(str(r) for r in self.resources.values())
         cond_str = ", ".join(self.conditions)
-        if not self.is_active:
+        if self.status == "dead":
             status = " [DEAD]"
+        elif self.status == "dying":
+            status = " [DYING]"
+        elif self.status == "incapacitated":
+            status = " [INCAPACITATED]"
         elif self.left_combat:
             status = " [LEFT COMBAT]"
         elif self.pending:
@@ -251,7 +255,10 @@ class Combat:
 
     def _non_pending_order(self) -> list[Combatant]:
         """Return only active (non-pending, non-left) combatants in initiative order."""
-        return [c for c in self._order() if not c.pending and not c.left_combat]
+        return [c for c in self._order()
+                if not c.pending
+                and not c.left_combat
+                and c.status not in ("dead", "incapacitated")]
 
     def next_turn(self) -> str:
         if not self.active:
@@ -354,6 +361,7 @@ class Combat:
                     "hp_bar": c.hp_bar_state,
                     "hp_fraction": round(c.hp_fraction, 4),
                     "is_active": c.is_active,
+                    "status": c.status,
                     "is_current_turn": c is current,
                     "has_acted": c.has_acted,
                     "pending": c.pending,

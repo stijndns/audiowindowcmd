@@ -267,10 +267,8 @@ class Combat:
         if not order:
             return "[!] No combatants."
 
-        # Reset reaction for the combatant finishing their turn
+        # Identify the combatant finishing their turn
         current = order[self.turn_index % len(order)]
-        if "reaction" in current.resources:
-            current.resources["reaction"].reset()
 
         self.turn_index += 1
         new_round_msg = ""
@@ -286,9 +284,11 @@ class Combat:
         order = self._non_pending_order()
 
         # Mark the incoming combatant as having acted (reveals monsters on player screen)
-        # Also reset legendary actions at the start of their turn (D&D convention)
+        # Also reset reaction and legendary actions at the start of their turn (D&D convention)
         next_c = order[self.turn_index % len(order)]
         next_c.has_acted = True
+        if "reaction" in next_c.resources:
+            next_c.resources["reaction"].reset()
         if "legendary_actions" in next_c.resources:
             next_c.resources["legendary_actions"].reset()
         return f"Next turn: {next_c.name} (Initiative {next_c.initiative}){new_round_msg}"

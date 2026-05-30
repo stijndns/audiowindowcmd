@@ -332,7 +332,7 @@ Shorthand commands (usable outside 'combat ...'):
             options.append(("legendary_actions", f"Legendary Actions ({r.current}/{r.maximum}){warn}"))
         options.append(("special", "Special case (no resource spent)"))
 
-        print(f"[?] {actor.name} is acting outside their turn. Resource spent?")
+        print(f"\n[?] {actor.name} is acting outside their turn. Resource spent?")
         for i, (_, label) in enumerate(options, 1):
             print(f"    {i}. {label}")
         while True:
@@ -1038,6 +1038,14 @@ Usage:
         # Position 1: top-level subcommand
         if len(parts) == 1:
             return [s for s in top_subs if s.startswith(text)]
+
+        if parts[1].lower() in ("import", "export"):
+            if len(parts) == 2:
+                import glob, os
+                pattern = os.path.join("combatants", text + "*.json")
+                matches = glob.glob(pattern)
+                return [os.path.splitext(os.path.basename(m))[0] for m in matches]
+            return []
 
         if parts[1].lower() == "remove":
             names = [c.name for c in self._combat.combatants]

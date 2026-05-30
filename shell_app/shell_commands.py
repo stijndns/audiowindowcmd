@@ -24,7 +24,7 @@ class ImageShell(cmd.Cmd):
         self.commands_list = [
             "show", "fullscreen", "restore", "minimize",
             "play", "stop", "volume",
-            "combat", "next", "hp", "resource", "condition", "page",
+            "combat", "next", "hp", "maxhp", "resource", "condition", "page",
             "exit",
         ]
         self.command_queue = command_queue
@@ -793,6 +793,49 @@ Usage:
             print(f"    {c.name} has dropped to 0 HP!")
         self._log_entry(f"[hp] {msg}")
         self._push_combat()
+
+    # ── maxhp ────────────────────────────────────────────────────────────────
+
+    def do_maxhp(self, arg):
+        """Change the maximum HP of a combatant.
+Usage:
+  maxhp <name> <new_max>    e.g.  maxhp Aria 140
+"""
+        import shlex
+        try:
+            parts = shlex.split(arg.strip())
+        except ValueError:
+            parts = arg.strip().split()
+
+        if len(parts) < 2:
+            print("Usage: maxhp <name> <new_max>")
+            return
+
+        name = parts[0]
+        c = self._combat.get(name)
+        if c is None:
+            print(f"[!] Combatant '{name}' not found.")
+            return
+
+        try:
+            new_max = int(parts[1])
+        except ValueError:
+            print("[!] new_max must be an integer.")
+            return
+
+        if new_max <= 0:
+            print("[!] Maximum HP must be greater than 0.")
+            return
+
+        old_max = c.hp_max
+        c.hp_max = new_max
+        print(f"[+] {name} max HP: {old_max} → {new_max}")
+        self._log_entry(f"[maxhp] {name} max HP: {old_max} → {new_max}")
+        self._push_combat()
+
+    def complete_maxhp(self, text, line, begidx, endidx):
+        names = [c.name for c in self._combat.combatants]
+        return [n for n in names if n.lower().startswith(text.lower())]
 
     # ── resource ──────────────────────────────────────────────────────────────
 

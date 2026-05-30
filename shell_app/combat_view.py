@@ -7,6 +7,8 @@ The DM calls render(snapshot, page) whenever state changes; this redraws the can
 
 import tkinter as tk
 import math
+import os
+from PIL import Image, ImageTk
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 PALETTE = {
@@ -83,6 +85,8 @@ class CombatView:
         self.canvas.pack(fill="both", expand=True)
         self._snapshot: dict | None = None
         self._page: int = 0          # 0-based current page index
+        # Cache: (filename, row_h) -> ImageTk.PhotoImage with fade applied
+        self._image_cache: dict = {}
         self.root.bind("<Configure>", lambda e: self._redraw())
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -92,6 +96,7 @@ class CombatView:
         self._snapshot = snapshot
         if page is not None:
             self._page = page
+        self._image_cache.clear()   # row_h may have changed
         self._clamp_page()
         self._redraw()
 
@@ -148,6 +153,7 @@ class CombatView:
         if self._snapshot is None:
             return
         self.canvas.delete("all")
+        self._live_images = []   # release previous frame's image refs
         W = self.canvas.winfo_width()
         H = self.canvas.winfo_height()
         if W < 10 or H < 10:
@@ -211,6 +217,45 @@ class CombatView:
             font=(FONT_FAMILY, _scaled_font(MUTED_FONT_SIZE, scale)),
             anchor="e")
 
+    # ── Image loading ─────────────────────────────────────────────────────────
+
+    def _prepare_combatant_image(self, filename: str, row_h: int) -> ImageTk.PhotoImage | None:
+        """Load, resize, fade and cache a combatant image. Returns None on failure."""
+        cache_key = (filename, row_h)
+        if cache_key in self._image_cache:
+            return self._image_cache[cache_key]
+
+        path = os.path.join("assets", "images", "combatants", filename)
+        if not os.path.exists(path):
+            return None
+
+        try:
+            img = Image.open(path).convert("RGBA")
+        except Exception:
+            return None
+
+        # Scale to row height, preserving aspect ratio
+        orig_w, orig_h = img.size
+        new_w = max(1, int(orig_w * row_h / orig_h))
+        img = img.resize((new_w, row_h), Image.LANCZOS)
+
+        # Apply horizontal fade: right=opaque (200/255), left=transparent
+        # Use a 1-pixel-tall gradient then scale up — fast and avoids pixel loops
+        import struct
+        r, g, b, a = img.split()
+        # Build gradient as raw bytes: left=0, right=200
+        gradient_row = bytes(int(200 * x / new_w) for x in range(new_w))
+        gradient_data = gradient_row * row_h
+        fade = Image.frombytes("L", (new_w, row_h), gradient_data)
+        # Multiply existing alpha channel with fade mask using Pillow multiply
+        from PIL import ImageChops
+        combined = ImageChops.multiply(a, fade)
+        img.putalpha(combined)
+
+        tk_img = ImageTk.PhotoImage(img)
+        self._image_cache[cache_key] = tk_img
+        return tk_img
+
     # ── Revealed row ──────────────────────────────────────────────────────────
 
     def _draw_row(self, c, entry, pad, y, W, row_h, scale):
@@ -240,6 +285,17 @@ class CombatView:
         border_w   = 2 if is_current else 1
         c.create_rectangle(x_left, y, x_right, y + row_h,
             fill=bg_col, outline=border_col, width=border_w)
+
+        # Combatant image (anchored top-right of row box, drawn before text)
+        img_filename = entry.get("image")
+        if img_filename:
+            tk_img = self._prepare_combatant_image(img_filename, row_h)
+            if tk_img:
+                c.create_image(x_right, y, image=tk_img, anchor="ne")
+                # Keep reference to prevent garbage collection
+                if not hasattr(self, "_live_images"):
+                    self._live_images = []
+                self._live_images.append(tk_img)
 
         # Accent bar
         c.create_rectangle(x_left, y, x_left + 4, y + row_h,

@@ -201,6 +201,7 @@ Combat tracker commands:
   combat action <actor> heal <target> <amount>           — heal
   combat action <actor> condition <target> <condition>   — apply condition
   combat action <actor> remove_condition <target> <cond> — remove condition
+  combat image <name> <filename>              — assign an image to a combatant
   combat export <filename>                    — export roster to combatants/<filename>.json
   combat import <filename>                    — import roster from combatants/<filename>.json
   combat log                                  — print combat log to shell
@@ -282,6 +283,9 @@ Shorthand commands (usable outside 'combat ...'):
 
         elif sub == "import":
             self._cmd_combat_import(parts[1:])
+
+        elif sub == "image":
+            self._cmd_combat_image(parts[1:])
 
         elif sub in ("show", "screen"):
             if not self._combat.combatants:
@@ -445,6 +449,26 @@ Shorthand commands (usable outside 'combat ...'):
             self._log_entry(f"           {actor_name}: special case (no resource spent).")
         self._push_combat()
 
+    def _cmd_combat_image(self, parts: list[str]):
+        """Handle 'combat image <name> <filename>'."""
+        import os
+        if len(parts) < 2:
+            print("Usage: combat image <name> <filename>")
+            return
+        name     = parts[0]
+        filename = parts[1]
+        c = self._combat.get(name)
+        if c is None:
+            print(f"[!] Combatant '{name}' not found.")
+            return
+        path = os.path.join("assets", "images", "combatants", filename)
+        if not os.path.exists(path):
+            print(f"[!] Image not found: {path}")
+            return
+        c.image = filename
+        print(f"[+] Image '{filename}' assigned to {name}.")
+        self._push_combat()
+
     def _cmd_combat_export(self, parts: list[str]):
         """Handle 'combat export <filename>'."""
         import json, os
@@ -471,6 +495,7 @@ Shorthand commands (usable outside 'combat ...'):
                 "name":      c.name,
                 "type":      c.combatant_type,
                 "hp_max":    c.hp_max,
+                "image":     c.image,
                 "resources": [
                     {"name": r.name, "maximum": r.maximum}
                     for r in c.resources.values()
@@ -552,6 +577,14 @@ Shorthand commands (usable outside 'combat ...'):
             for r in resources:
                 c.add_resource(r["name"], r["maximum"])
 
+            # Restore image if present
+            if entry.get("image"):
+                import os
+                img_path = os.path.join("assets", "images", "combatants", entry["image"])
+                if os.path.exists(img_path):
+                    c.image = entry["image"]
+                else:
+                    print(f"  [!] Image not found for {name}: {entry['image']} (skipped)")
             print(f"[+] Imported: {c.summary()}")
             imported += 1
 
@@ -973,11 +1006,23 @@ Usage:
             parts = line[:begidx].split()
 
         top_subs = ["new", "add", "start", "status", "end", "show", "screen",
-                    "noreaction", "reset", "legendary", "action", "log", "export", "import"]
+                    "noreaction", "reset", "legendary", "action", "log", "export", "import", "image"]
 
         # Position 1: top-level subcommand
         if len(parts) == 1:
             return [s for s in top_subs if s.startswith(text)]
+
+        if parts[1].lower() == "image":
+            names = [c.name for c in self._combat.combatants]
+            if len(parts) == 2:
+                return [n for n in names if n.lower().startswith(text.lower())]
+            if len(parts) == 3:
+                from shell_app.utils import tab_completion
+                from PIL import Image as PilImage
+                clean = line.split()[-1] if not line.endswith(" ") else ""
+                return tab_completion(clean, list(PilImage.registered_extensions()),
+                                      current_os, "combatant_image")
+            return []
 
         if parts[1].lower() != "action":
             return [s for s in top_subs if s.startswith(text)]

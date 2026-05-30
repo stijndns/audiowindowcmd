@@ -69,6 +69,7 @@ class Combatant:
     tiebreaker: int = 0          # Used to resolve initiative ties; lower = earlier in order
     pending: bool = False        # True when added mid-combat; enters rotation next round
     legendary_actions_revealed: bool = False  # True after first legendary action is used
+    image: str | None = None     # filename relative to assets/images/combatants/
 
     # Default resources injected at creation time (reaction, etc.) are done
     # externally so the shell can control them.
@@ -342,6 +343,7 @@ class Combat:
                     "pending": c.pending,
                     "conditions": list(c.conditions),
                     "legendary_actions_revealed": c.legendary_actions_revealed,
+                    "image": c.image,
                     "reaction": (
                         {"current": c.resources["reaction"].current,
                          "maximum": c.resources["reaction"].maximum}

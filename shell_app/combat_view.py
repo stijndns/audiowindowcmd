@@ -136,9 +136,11 @@ class CombatView:
         combatants = self._snapshot["combatants"]
         revealed   = [e for e in combatants
                       if not e.get("pending", False)
+                      and not e.get("left_combat", False)
                       and (e["type"] != "monster" or e.get("has_acted", True))]
         unrevealed = [e for e in combatants
                       if e.get("pending", False)
+                      or e.get("left_combat", False)
                       or (e["type"] == "monster" and not e.get("has_acted", True))]
         return revealed + unrevealed
 
@@ -380,8 +382,9 @@ class CombatView:
         inner_pad  = int(12 * scale)
         text_x     = x_left + inner_pad + 6
 
-        # Initiative: ? for unacted monsters, real value for pending PCs/NPCs
-        init_text = "?" if not entry.get("has_acted", True) else str(entry["initiative"])
+        # Initiative: ? for unacted monsters, real value for pending/left_combat
+        init_text = "?" if (not entry.get("has_acted", True)
+                            and not entry.get("left_combat", False))                         else str(entry["initiative"])
         c.create_text(pad + init_col_w // 2, y + row_h // 2,
             text=init_text, fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
@@ -395,9 +398,11 @@ class CombatView:
         c.create_rectangle(x_left, y, x_left + 4, y + row_h,
             fill=PALETTE["bar_dead"], outline="")
 
-        # Name + optional [PENDING] tag
+        # Name + status tag
         display_name = entry["name"].replace("_", " ")
-        if entry.get("pending", False):
+        if entry.get("left_combat", False):
+            display_name += "  [LEFT COMBAT]"
+        elif entry.get("pending", False):
             display_name += "  [PENDING]"
         c.create_text(text_x, y + row_h // 2 - int(9 * scale),
             text=display_name, fill=PALETTE["text_dim"],

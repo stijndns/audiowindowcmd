@@ -195,6 +195,7 @@ Combat tracker commands:
   combat end                                  — end combat, clear roster
   combat noreaction                           — add next combatant WITHOUT a reaction slot
                                                 (use before the next 'combat add')
+  combat remove <name>                        — remove a combatant (grey [LEFT COMBAT] if active)
   combat legendary <name> <max>               — add legendary actions to a monster or NPC
   combat reset resources                      — reset all resources for all combatants
   combat action <actor> damage <target> <amount> [type]  — deal damage
@@ -268,6 +269,9 @@ Shorthand commands (usable outside 'combat ...'):
             self._log_saved = False
             print(f"[+] {msg}")
             self._stop_combat_view()
+
+        elif sub == "remove":
+            self._cmd_combat_remove(parts[1:])
 
         elif sub == "legendary":
             self._cmd_combat_legendary(parts[1:])
@@ -448,6 +452,28 @@ Shorthand commands (usable outside 'combat ...'):
         elif resource_key == "special":
             self._log_entry(f"           {actor_name}: special case (no resource spent).")
         self._push_combat()
+
+    def _cmd_combat_remove(self, parts: list[str]):
+        """Handle 'combat remove <name>'."""
+        if not parts:
+            print("Usage: combat remove <name>")
+            return
+        name = parts[0]
+        if not self._combat.active:
+            # Before combat: fully remove
+            if self._combat.remove_combatant(name):
+                print(f"[+] {name} removed from roster.")
+                self._push_combat()
+            else:
+                print(f"[!] Combatant '{name}' not found.")
+        else:
+            # During combat: mark as left
+            if self._combat.remove_combatant_from_active(name):
+                print(f"[+] {name} has left combat.")
+                self._log_entry(f"[combat remove] {name} left combat.")
+                self._push_combat()
+            else:
+                print(f"[!] Combatant '{name}' not found.")
 
     def _cmd_combat_image(self, parts: list[str]):
         """Handle 'combat image <name> <filename>'."""
@@ -693,6 +719,7 @@ Shorthand commands (usable outside 'combat ...'):
                 self._resolve_ties_for(init, ties[init])
             self._log_entry(f"[combat add] {c.summary()}")
             self._push_combat()
+            # Note: if this overwrote a left_combat entry, combat.py handled removal
 
     # ── next ──────────────────────────────────────────────────────────────────
 
@@ -1006,11 +1033,17 @@ Usage:
             parts = line[:begidx].split()
 
         top_subs = ["new", "add", "start", "status", "end", "show", "screen",
-                    "noreaction", "reset", "legendary", "action", "log", "export", "import", "image"]
+                    "noreaction", "reset", "legendary", "action", "log", "export", "import", "image", "remove"]
 
         # Position 1: top-level subcommand
         if len(parts) == 1:
             return [s for s in top_subs if s.startswith(text)]
+
+        if parts[1].lower() == "remove":
+            names = [c.name for c in self._combat.combatants]
+            if len(parts) == 2:
+                return [n for n in names if n.lower().startswith(text.lower())]
+            return []
 
         if parts[1].lower() == "image":
             names = [c.name for c in self._combat.combatants]

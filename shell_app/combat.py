@@ -70,6 +70,7 @@ class Combatant:
     pending: bool = False        # True when added mid-combat; enters rotation next round
     legendary_actions_revealed: bool = False  # True after first legendary action is used
     image: str | None = None     # filename relative to assets/images/combatants/
+    left_combat: bool = False    # True when removed during active combat
 
     # Default resources injected at creation time (reaction, etc.) are done
     # externally so the shell can control them.
@@ -143,6 +144,8 @@ class Combatant:
         cond_str = ", ".join(self.conditions)
         if not self.is_active:
             status = " [DEAD]"
+        elif self.left_combat:
+            status = " [LEFT COMBAT]"
         elif self.pending:
             status = " [PENDING]"
         else:
@@ -178,8 +181,13 @@ class Combat:
         hp_current: Optional[int] = None,
         add_reaction: bool = True,
     ) -> Combatant | None:
-        if self.get(name) is not None:
-            return None
+        existing = self.get(name)
+        if existing is not None:
+            if existing.left_combat:
+                # Allow rejoining — fully remove the old entry
+                self.combatants.remove(existing)
+            else:
+                return None
         c = Combatant(
             name=name,
             combatant_type=combatant_type.lower(),
@@ -204,6 +212,14 @@ class Combat:
                 self.turn_index = min(self.turn_index, max(0, len(self._order()) - 1))
                 return True
         return False
+
+    def remove_combatant_from_active(self, name: str) -> bool:
+        """Mark a combatant as having left combat (greyed out, out of rotation)."""
+        c = self.get(name)
+        if c is None:
+            return False
+        c.left_combat = True
+        return True
 
     def get(self, name: str) -> Optional[Combatant]:
         for c in self.combatants:
@@ -234,8 +250,8 @@ class Combat:
         return order[self.turn_index % len(order)]
 
     def _non_pending_order(self) -> list[Combatant]:
-        """Return only non-pending combatants in initiative order."""
-        return [c for c in self._order() if not c.pending]
+        """Return only active (non-pending, non-left) combatants in initiative order."""
+        return [c for c in self._order() if not c.pending and not c.left_combat]
 
     def next_turn(self) -> str:
         if not self.active:
@@ -344,6 +360,7 @@ class Combat:
                     "conditions": list(c.conditions),
                     "legendary_actions_revealed": c.legendary_actions_revealed,
                     "image": c.image,
+                    "left_combat": c.left_combat,
                     "reaction": (
                         {"current": c.resources["reaction"].current,
                          "maximum": c.resources["reaction"].maximum}

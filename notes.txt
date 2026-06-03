@@ -1,0 +1,15 @@
+initial thoughts:
+__init__.py -> since this is no library but an application itself, no need for this file. possibly keep it here, but the main file outside (ideally an extra nesting with a src folder)
+add logs/ to .gitignore to not commit them.
+ImmageShell -> Handle quit event, make non-daemon thread to be able to implement auto-save on quit.
+  shell_commands.py -> avoid name collision with cmd local variable and cmd imported package.
+  completeXXX -> name consistency + are they used? +
+  import shlex globally
+immage_window -> use tk.Frame instead of root directly
+  -> switch to events for reading out Queue instead of root.after(200)
+
+combatView -> inherit from Canvas instead of setting root and canvas
+  -> make function not take canvas And self as argument
+  -> extract rows into their own widget -> this one uses canvas (maybe partially) to render the content
+  -> use widgets and grid where possible instead of everything iside of canvas.
+  

@@ -76,18 +76,18 @@ def _page_count(total: int) -> int:
     return max(1, math.ceil(total / PAGE_SIZE))
 
 
-class CombatView:
+class CombatView(tk.Frame):
     """Draws the combat tracker directly onto the existing Tk root."""
 
     def __init__(self, root: tk.Tk):
-        self.root   = root
-        self.canvas = tk.Canvas(root, bg=PALETTE["bg"], highlightthickness=0, bd=0)
+        super().__init__(root)
+        self.canvas = tk.Canvas(self, bg=PALETTE["bg"], highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
         self._snapshot: dict | None = None
         self._page: int = 0          # 0-based current page index
         # Cache: (filename, row_h) -> ImageTk.PhotoImage with fade applied
         self._image_cache: dict = {}
-        self.root.bind("<Configure>", lambda e: self._redraw())
+        root.bind("<Configure>", lambda e: self._redraw(), add='+')
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -247,7 +247,6 @@ class CombatView:
 
         # Apply horizontal fade: right=opaque (200/255), left=transparent
         # Use a 1-pixel-tall gradient then scale up — fast and avoids pixel loops
-        import struct
         r, g, b, a = img.split()
         # Build gradient as raw bytes: left=0, right=200
         gradient_row = bytes(int(200 * x / new_w) for x in range(new_w))
@@ -395,7 +394,7 @@ class CombatView:
         # Initiative: ? for unacted monsters, real value for pending/left_combat
         non_mystery = (entry.get("left_combat", False)
                        or entry.get("status", "active") != "active")
-        init_text = "?" if (not entry.get("has_acted", True) and not non_mystery)                         else str(entry["initiative"])
+        init_text = "?" if (not entry.get("has_acted", True) and not non_mystery) else str(entry["initiative"])
         c.create_text(pad + init_col_w // 2, y + row_h // 2,
             text=init_text, fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, _scaled_font(NAME_FONT_SIZE, scale), "bold"),
@@ -437,10 +436,10 @@ class CombatView:
     # ── Pack helpers ──────────────────────────────────────────────────────────
 
     def hide(self):
-        self.canvas.pack_forget()
+        self.pack_forget()
 
     def show(self):
-        self.canvas.pack(fill="both", expand=True)
+        self.pack(fill="both", expand=True)
         self._redraw()
 
 

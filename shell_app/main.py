@@ -6,7 +6,7 @@ from shell_app.image_window import ImageWindow
 from shell_app.shell_commands import ImageShell
 
 def shell_thread():
-    shell = ImageShell(command_queue)
+    shell = ImageShell(command_queue, win)
     shell.cmdloop()
 
 if __name__ == "__main__":

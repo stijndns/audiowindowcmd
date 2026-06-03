@@ -8,20 +8,20 @@ from shell_app.combat_view import CombatView
 
 current_os = platform.system()
 
-class ImageWindow:
+class ImageWindow(tk.Frame):
     def __init__(self, root, command_queue):
-        self.root = root
-        self.root.title("AudioWindowCMD")
-        self.root.geometry("800x600")
-        self.root.configure(bg="#0d1117")
+        super().__init__(root, bg="black")
+        root.title("AudioWindowCMD")
+        root.geometry("800x600")
 
-        self.label = tk.Label(root, bg="black")
+        self.label = tk.Label(self, bg="black")
         self.label.pack(fill="both", expand=True)
 
         self.original_image = None
         self.image = None
 
         self.command_queue = command_queue
+        self.pack(fill="both", expand=True)
 
         # Combat view overlay
         self._combat_mode = False
@@ -29,10 +29,10 @@ class ImageWindow:
         self.combat_view.hide()   # hidden until combat starts
 
         # Bind window resize event to re-render the image
-        self.root.bind("<Configure>", lambda e: self.render_image())
+        root.bind("<Configure>", lambda e: self.render_image(), add='+')
 
         # Start checking queue for commands
-        self.root.after(200, self.check_commands)
+        self.bind("<<QueueMsg>>", self.check_commands)
 
     # ── Image display ─────────────────────────────────────────────────────────
 
@@ -55,8 +55,8 @@ class ImageWindow:
 
         img = self.original_image.copy()
 
-        win_w = self.root.winfo_width()
-        win_h = self.root.winfo_height()
+        win_w = self.winfo_width()
+        win_h = self.winfo_height()
 
         if win_w <= 1 or win_h <= 1:
             return
@@ -75,46 +75,45 @@ class ImageWindow:
     def fullscreen(self):
         self.restore()
 
-        x = self.root.winfo_x()
-        y = self.root.winfo_y()
+        x = self.winfo_x()
+        y = self.winfo_y()
 
         for m in get_monitors():
             if m.x <= x < m.x + m.width and m.y <= y < m.y + m.height:
                 if current_os == "Windows":
-                    self.root.geometry(f"{m.width}x{m.height}+{m.x}+{m.y}")
-                    self.root.overrideredirect(True)
+                    self.winfo_toplevel().geometry(f"{m.width}x{m.height}+{m.x}+{m.y}")
+                    self.winfo_toplevel().overrideredirect(True)
                 if current_os == "Linux":
-                    self.root.attributes("-fullscreen", True)
+                    self.winfo_toplevel().attributes("-fullscreen", True)
                 self.render_image()
                 return m
+        return None
 
     def restore(self):
-        self.root.overrideredirect(False)
-        self.root.attributes("-fullscreen", False)
-        self.root.deiconify()
-        self.root.geometry("800x600")
+        self.winfo_toplevel().overrideredirect(False)
+        self.winfo_toplevel().attributes("-fullscreen", False)
+        self.winfo_toplevel().deiconify()
+        self.winfo_toplevel().geometry("800x600")
         self.render_image()
 
     def minimize(self):
-        if self.root.overrideredirect():
+        if self.winfo_toplevel().overrideredirect():
             self.restore()
-        self.root.iconify()
+        self.winfo_toplevel().iconify()
 
     # ── Combat mode ───────────────────────────────────────────────────────────
 
     def enter_combat_mode(self):
         """Hide image label, show combat canvas."""
         self._combat_mode = True
-        self.label.pack_forget()
+        self.pack_forget()
         self.combat_view.show()
-        self.root.configure(bg="#0d1117")
 
     def exit_combat_mode(self):
         """Hide combat canvas, restore image label."""
         self._combat_mode = False
         self.combat_view.hide()
-        self.label.pack(fill="both", expand=True)
-        self.root.configure(bg="black")
+        self.pack(fill="both", expand=True)
         self.render_image()
 
     def update_combat_view(self, snapshot: dict):
@@ -123,55 +122,52 @@ class ImageWindow:
 
     # ── Command queue polling ─────────────────────────────────────────────────
 
-    def check_commands(self):
-        while not self.command_queue.empty():
-            cmd, arg = self.command_queue.get()
-
-            if cmd == "show":
-                if self._combat_mode:
-                    self.exit_combat_mode()
-                self.load_image(arg)
-                self.render_image()
-
-            elif cmd == "fullscreen":
-                m = self.fullscreen()
-                print(f"[+] Fullscreen on monitor {m}")
-
-            elif cmd == "restore":
-                self.restore()
-                print("[+] Restored window")
-
-            elif cmd == "minimize":
-                self.minimize()
-                print("[+] Minimized window")
-
-            elif cmd == "combat_enter":
-                self.enter_combat_mode()
-                if arg is not None:
-                    snapshot, page = arg
-                    self.combat_view._snapshot = snapshot
-                    self.combat_view._page = page
-                    self.root.after(50, self.combat_view._redraw)
-
-            elif cmd == "combat_exit":
+    def check_commands(self, event):
+        assert not self.command_queue.empty()
+        cmd, arg = self.command_queue.get()
+        if cmd == "show":
+            if self._combat_mode:
                 self.exit_combat_mode()
+            self.load_image(arg)
+            self.render_image()
 
-            elif cmd == "combat_update":
+        elif cmd == "fullscreen":
+            m = self.fullscreen()
+            print(f"[+] Fullscreen on monitor {m}")
+
+        elif cmd == "restore":
+            self.restore()
+            print("[+] Restored window")
+
+        elif cmd == "minimize":
+            self.minimize()
+            print("[+] Minimized window")
+
+        elif cmd == "combat_enter":
+            self.enter_combat_mode()
+            if arg is not None:
                 snapshot, page = arg
-                self.combat_view.render(snapshot, page)
+                self.combat_view._snapshot = snapshot
+                self.combat_view._page = page
+                self.after(50, self.combat_view._redraw)
 
-            elif cmd == "page_next":
-                self.combat_view.page_next()
+        elif cmd == "combat_exit":
+            self.exit_combat_mode()
 
-            elif cmd == "page_prev":
-                self.combat_view.page_prev()
+        elif cmd == "combat_update":
+            snapshot, page = arg
+            self.combat_view.render(snapshot, page)
 
-            elif cmd == "page_set":
-                self.combat_view.set_page(arg)
+        elif cmd == "page_next":
+            self.combat_view.page_next()
 
-            elif cmd == "exit":
-                print("[+] Exiting...")
-                self.root.destroy()
-                return
+        elif cmd == "page_prev":
+            self.combat_view.page_prev()
 
-        self.root.after(200, self.check_commands)
+        elif cmd == "page_set":
+            self.combat_view.set_page(arg)
+
+        elif cmd == "exit":
+            print("[+] Exiting...")
+            self.master.destroy()
+            return

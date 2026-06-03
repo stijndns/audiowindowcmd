@@ -1,13 +1,16 @@
 import cmd
 import threading
 import os
-import glob
 from PIL import Image, ImageTk
+from typing import TYPE_CHECKING, Any
+import platform
+
+if TYPE_CHECKING:
+    import tkinter as tk
 
 from shell_app.utils import tab_completion
 from shell_app.combat import Combat
 
-import platform
 
 current_os = platform.system()
 
@@ -19,15 +22,16 @@ class ImageShell(cmd.Cmd):
     intro = "AudioWindowCMD Shell. Type help or ? to list commands.\nType 'combat help' for combat tracker commands."
     prompt = "> "
 
-    def __init__(self, command_queue):
+    def __init__(self, command_queue, root: tk.Tk):
         super().__init__()
+        self.root: tk.Tk = root
         self.commands_list = [
             "show", "fullscreen", "restore", "minimize",
             "play", "stop", "volume",
             "combat", "next", "hp", "maxhp", "resource", "condition", "page",
             "exit",
         ]
-        self.command_queue = command_queue
+        self._command_queue = command_queue
         self.vol_user = None
         self._combat = Combat()
         self._log_entries: list[str] = []
@@ -35,15 +39,19 @@ class ImageShell(cmd.Cmd):
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
+    def _push_command(self, command: str, args):
+        self._command_queue.put((command, args))
+        self.root.event_generate("<<QueueMsg>>")
+
     def _push_combat(self, page: int | None = None):
         """Send the latest combat snapshot to the player window."""
-        self.command_queue.put(("combat_update", (self._combat.snapshot(), page)))
+        self._push_command("combat_update", (self._combat.snapshot(), page))
 
     def _start_combat_view(self):
-        self.command_queue.put(("combat_enter", (self._combat.snapshot(), 0)))
+        self._push_command("combat_enter", (self._combat.snapshot(), 0))
 
     def _stop_combat_view(self):
-        self.command_queue.put(("combat_exit", None))
+        self._push_command("combat_exit", None)
 
     def _resolve_ties_for(self, init_val: int, tied: list):
         """Prompt the user to order a single group of tied combatants."""
@@ -115,19 +123,19 @@ class ImageShell(cmd.Cmd):
 
     def do_show(self, arg):
         """Display an image in the window.\nUsage: show <path/to/file>"""
-        self.command_queue.put(("show", arg))
+        self._push_command("show", arg)
 
     def do_fullscreen(self, arg):
         """Switch to fullscreen mode."""
-        self.command_queue.put(("fullscreen", None))
+        self._push_command("fullscreen", None)
 
     def do_restore(self, arg):
         """Restore window to default size (800×600)."""
-        self.command_queue.put(("restore", None))
+        self._push_command("restore", None)
 
     def do_minimize(self, arg):
         """Minimize the window."""
-        self.command_queue.put(("minimize", None))
+        self._push_command("minimize", None)
 
     # ── Audio commands ────────────────────────────────────────────────────────
 
@@ -700,7 +708,6 @@ Shorthand commands (usable outside 'combat ...'):
         if len(parts) < 2:
             print("Usage: combat legendary <name> <max>")
             return
-        import shlex
         name = parts[0]
         try:
             maximum = int(parts[1])
@@ -1071,13 +1078,13 @@ Usage:
 """
         arg = arg.strip().lower()
         if arg == "next":
-            self.command_queue.put(("page_next", None))
+            self._push_command("page_next", None)
         elif arg == "prev":
-            self.command_queue.put(("page_prev", None))
+            self._push_command("page_prev", None)
         else:
             try:
                 n = int(arg)
-                self.command_queue.put(("page_set", n - 1))  # convert to 0-based
+                self._push_command("page_set", n - 1)  # convert to 0-based
             except ValueError:
                 print("Usage: page next | page prev | page <number>")
 
@@ -1089,7 +1096,7 @@ Usage:
 
     def do_exit(self, arg):
         """Close the application."""
-        self.command_queue.put(("exit", None))
+        self._push_command("exit", None)
         print("Exiting shell.")
         return True
 

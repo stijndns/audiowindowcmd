@@ -1,11 +1,14 @@
-# ── Styling constants ─────────────────────────────────────────────────────────
+# ── Layout constants ─────────────────────────────────────────────────────────
 FONT_FAMILY     = "Consolas"
+PAGE_SIZE       = 6             # combatants per page
+ROUND_FONT_SIZE = 22
 NAME_FONT_SIZE  = 15
 STAT_FONT_SIZE  = 12
 MUTED_FONT_SIZE = 11
 PADDING         = 24
 # Row height base (without conditions) — used in _draw
 ROW_HEIGHT_BASE = 64
+COND_EXTRA      = 18            # extra px (pre-scale) reserved for conditions line
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 PALETTE = {

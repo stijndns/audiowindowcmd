@@ -3,14 +3,15 @@ import tkinter as tk
 
 from PIL import ImageTk, Image
 
-from .combat_view import ROW_HEIGHT_BASE
 from .styling import *
 from ..combat import Type, Combatant, Status
 
 INITIATIVE_W    = 52
 class CombatantView(tk.Canvas):
-    def __init__(self, parent, combatant: Combatant, img_cache: dict):
-        super().__init__(parent, bg=PALETTE["bg"], highlightthickness=0, bd=0)
+    def __init__(self, parent: tk.Widget, combatant: Combatant, img_cache: dict):
+        scale = min(parent.winfo_width() / 900, parent.winfo_height() / 600, 1.5)
+        row_h = max(30, int((ROW_HEIGHT_BASE + COND_EXTRA) * scale))
+        super().__init__(parent, bg=PALETTE["bg"], highlightthickness=0, bd=0, height=row_h)
         #TODO: fix all sizing/rendering
         self.combatant = combatant
         self._image_cache = img_cache
@@ -30,7 +31,7 @@ class CombatantView(tk.Canvas):
         is_dead    = status in (Status.DEAD, Status.INCAPACITATED)
         is_dying   = status == Status.DYING
         is_dimmed  = is_dead or is_dying   # greyed colours but may still show turn indicator
-        accent     = TYPE_ACCENT.get(self.combatant.type, PALETTE["text_muted"])
+        accent     = TYPE_ACCENT.get(self.combatant.type.value, PALETTE["text_muted"])
 
         pad = PADDING
         W = self.master.winfo_width()
@@ -199,7 +200,7 @@ class CombatantView(tk.Canvas):
             fill=PALETTE["text_dim"],
             font=(FONT_FAMILY, scaled_font(MUTED_FONT_SIZE, scale)),
             anchor="w")
-        
+
     # ── Image loading ─────────────────────────────────────────────────────────
 
     def _prepare_combatant_image(self, filename: str, row_h: int) -> ImageTk.PhotoImage | None:

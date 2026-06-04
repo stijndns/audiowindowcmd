@@ -12,12 +12,6 @@ from .styling import *
 from ..combat import Combatant, Type
 from .combatant_view import CombatantView
 
-# ── Layout constants ──────────────────────────────────────────────────────────
-PAGE_SIZE       = 6             # combatants per page
-ROUND_FONT_SIZE = 22
-COND_EXTRA      = 18            # extra px (pre-scale) reserved for conditions line
-
-
 def _page_count(total: int) -> int:
     return max(1, math.ceil(total / PAGE_SIZE))
 
@@ -79,7 +73,7 @@ class CombatView(tk.Frame):
 
     def _ordered_entries(self) -> list:
         """All combatants in initiative order, with pending/left_combat/unacted monsters at bottom."""
-        combatants = self._snapshot["combatants"]
+        combatants = self._snapshot["combatants"] if self._snapshot is not None else []
         def _goes_to_bottom(e: Combatant):
             return e.pending or e.left_combat or (e.type is Type.MONSTER and not e.has_acted)
         in_order = [e for e in combatants if not _goes_to_bottom(e)]
@@ -97,7 +91,8 @@ class CombatView(tk.Frame):
         if self._snapshot is None:
             return
         for item in self.winfo_children():
-            item.pack_forget()
+            if isinstance(item, tk.Widget):
+              item.pack_forget()
         W = self.winfo_width()
         H = self.winfo_height()
         if W < 10 or H < 10:
@@ -126,7 +121,7 @@ class CombatView(tk.Frame):
         # row_h    = max(30, min(int((ROW_HEIGHT_BASE + COND_EXTRA) * scale),
         #                        avail_h // PAGE_SIZE))
 
-        # self._draw_header(snap, W, header_h, pad, scale, self._page + 1, pages)
+        self._draw_header(snap, W, header_h, pad, scale, self._page + 1, pages)
 
         # y = header_h + pad
         gap = int(6 * scale)
@@ -143,7 +138,8 @@ class CombatView(tk.Frame):
     # ── Header ────────────────────────────────────────────────────────────────
 
     def _draw_header(self, snap, W, header_h, pad, scale, page, pages):
-        c.create_rectangle(0, 0, W, header_h, fill=PALETTE["surface"], outline="")
+        c = tk.Canvas(self, bg=PALETTE["surface"], bd=0, highlightthickness=0, width=W, height=header_h)
+        c.pack()
         c.create_line(0, header_h, W, header_h, fill=PALETTE["border"], width=1)
 
         active    = snap["active"]

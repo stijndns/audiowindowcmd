@@ -11,5 +11,6 @@ immage_window -> use tk.Frame instead of root directly
 combatView -> inherit from Canvas instead of setting root and canvas
   -> make function not take canvas And self as argument
   -> extract rows into their own widget -> this one uses canvas (maybe partially) to render the content
-  -> use widgets and grid where possible instead of everything iside of canvas.
+  -> use widgets and grid where possible instead of everything inside of canvas.
   
+rewrite page_clamping as it is AI bs triple doing the same functionality.

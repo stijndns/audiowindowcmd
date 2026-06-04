@@ -4,7 +4,7 @@ from screeninfo import get_monitors
 import os
 import platform
 
-from shell_app.combat_view import CombatView
+from shell_app.views.combat_view import CombatView
 
 current_os = platform.system()
 
@@ -29,7 +29,7 @@ class ImageWindow(tk.Frame):
         self.combat_view.hide()   # hidden until combat starts
 
         # Bind window resize event to re-render the image
-        root.bind("<Configure>", lambda e: self.render_image(), add='+')
+        self.bind("<Configure>", lambda e: self.render_image())
 
         # Start checking queue for commands
         self.bind("<<QueueMsg>>", self.check_commands)

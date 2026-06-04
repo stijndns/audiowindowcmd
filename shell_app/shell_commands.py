@@ -1,16 +1,16 @@
 import cmd
 import threading
 import os
-from PIL import Image, ImageTk
-from typing import TYPE_CHECKING, Any
+from PIL import Image
+from typing import TYPE_CHECKING
 import platform
 
 if TYPE_CHECKING:
     import tkinter as tk
 
-from shell_app.utils import tab_completion
-from shell_app.combat import Combat
-
+from .utils import tab_completion
+from .combat import Combat, Combatant, Type
+from .views.combat_view import PAGE_SIZE
 
 current_os = platform.system()
 
@@ -22,9 +22,9 @@ class ImageShell(cmd.Cmd):
     intro = "AudioWindowCMD Shell. Type help or ? to list commands.\nType 'combat help' for combat tracker commands."
     prompt = "> "
 
-    def __init__(self, command_queue, root: tk.Tk):
+    def __init__(self, command_queue, frame: tk.Frame):
         super().__init__()
-        self.root: tk.Tk = root
+        self.root = frame
         self.commands_list = [
             "show", "fullscreen", "restore", "minimize",
             "play", "stop", "volume",
@@ -263,8 +263,7 @@ Shorthand commands (usable outside 'combat ...'):
             self._log_reset(include_status=True)
             # Log first turn marker
             first = self._combat.current_combatant()
-            if first:
-                self._log_turn_marker(first.name, 1, new_round=False)
+            self._log_turn_marker(first.name, 1, new_round=False)
 
         elif sub == "status":
             print(self._combat.status())
@@ -365,8 +364,7 @@ Shorthand commands (usable outside 'combat ...'):
         """Prompt DM to choose which resource the actor spends for an out-of-turn action.
         Returns 'reaction', 'legendary_actions', or 'special'."""
         options = []
-        current = self._combat.current_combatant()
-        is_current_turn = current is not None and current.name == actor.name
+        is_current_turn = self._combat.current_combatant().name == actor.name
 
         if is_current_turn:
             return "none"   # no prompt needed
@@ -569,7 +567,7 @@ Shorthand commands (usable outside 'combat ...'):
         for c in self._combat.combatants:
             entry = {
                 "name":      c.name,
-                "type":      c.combatant_type,
+                "type":      c.type,
                 "hp_max":    c.hp_max,
                 "image":     c.image,
                 "resources": [
@@ -718,7 +716,7 @@ Shorthand commands (usable outside 'combat ...'):
         if c is None:
             print(f"[!] Combatant '{name}' not found.")
             return
-        if c.combatant_type not in ("npc", "monster"):
+        if c.type not in ("npc", "monster"):
             print(f"[!] Legendary actions can only be assigned to NPCs and monsters.")
             return
         msg = c.add_resource("legendary_actions", maximum)
@@ -785,21 +783,20 @@ Shorthand commands (usable outside 'combat ...'):
 
     def _page_of_current(self) -> int | None:
         """Return the 0-based page index of the current combatant, or None if unknown."""
-        from shell_app.combat_view import PAGE_SIZE
         current = self._combat.current_combatant()
         if current is None:
             return None
         snap = self._combat.snapshot()
-        combatants = snap["combatants"]
+        combatants: list[Combatant] = snap["combatants"]
         revealed   = [e for e in combatants
-                      if not e.get("pending", False)
-                      and (e["type"] != "monster" or e.get("has_acted", True))]
+                      if not e.pending
+                      and (e.type is Type.MONSTER or e.has_acted)]
         unrevealed = [e for e in combatants
-                      if e.get("pending", False)
-                      or (e["type"] == "monster" and not e.get("has_acted", True))]
+                      if e.pending
+                      or (e.type is Type.MONSTER and not e.has_acted)]
         ordered = revealed + unrevealed
         for i, e in enumerate(ordered):
-            if e["name"] == current.name:
+            if e.name == current.name:
                 return i // PAGE_SIZE
         return None
 

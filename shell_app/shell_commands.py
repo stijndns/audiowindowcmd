@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 from .utils import tab_completion
 from .combat import Combat, Combatant, Type
-from .views.combat_view import PAGE_SIZE
+from .views.combat_view import MIN_PAGE_SIZE
 
 current_os = platform.system()
 
@@ -433,6 +433,7 @@ Shorthand commands (usable outside 'combat ...'):
 
         # Prompt resource spend if actor is not the current combatant
         resource_key = self._prompt_resource_spend(actor)
+        amount = ""
 
         # Execute the action
         if action_type == "damage":
@@ -492,8 +493,8 @@ Shorthand commands (usable outside 'combat ...'):
         current = self._combat.current_combatant()
         turn_ctx = f"Round {self._combat.round}: {current.name}'s turn" if current else "out of turn"
         self._log_entry(f"[action | {turn_ctx}] {actor_name} → {action_type} → {target_name}" +
-                        (f": {amount}" + (f" {rest[1]}" if len(rest) > 1 else "")
-                         if action_type in ("damage", "heal") else f": {rest[0]}"))
+                          ((f": {amount}" + (f" {rest[1]}" if len(rest) > 1 else "")) if action_type in ("damage", "heal") else f": {rest[0]}")
+                       )
         if resource_key not in ("none", "special"):
             display = resource_key.replace("_", " ").title()
             self._log_entry(f"           {actor_name} spent a {display}.")
@@ -797,7 +798,7 @@ Shorthand commands (usable outside 'combat ...'):
         ordered = revealed + unrevealed
         for i, e in enumerate(ordered):
             if e.name == current.name:
-                return i // PAGE_SIZE
+                return i // MIN_PAGE_SIZE
         return None
 
     # ── hp ────────────────────────────────────────────────────────────────────

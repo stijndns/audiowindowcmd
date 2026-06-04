@@ -12,9 +12,6 @@ from .styling import *
 from ..combat import Combatant, Type
 from .combatant_view import CombatantView
 
-def _page_count(total: int) -> int:
-    return max(1, math.ceil(total / PAGE_SIZE))
-
 
 class CombatView(tk.Frame):
     """Draws the combat tracker directly onto the Tk Frame which will be shown in the full root.
@@ -47,14 +44,12 @@ class CombatView(tk.Frame):
         self._redraw()
 
     def page_next(self):
-        total = len(self._ordered_entries()) if self._snapshot else 0
-        pages = _page_count(total)
+        pages = self._page_count()
         self._page = (self._page + 1) % pages
         self._redraw()
 
     def page_prev(self):
-        total = len(self._ordered_entries()) if self._snapshot else 0
-        pages = _page_count(total)
+        pages = self._page_count()
         self._page = (self._page - 1) % pages
         self._redraw()
 
@@ -62,28 +57,30 @@ class CombatView(tk.Frame):
         return self._page
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+    def _page_count(self) -> int:
+      return max(1, math.ceil(len(self._ordered_entries()) / MIN_PAGE_SIZE))
 
     def _clamp_page(self):
         if self._snapshot is None:
             self._page = 0
             return
-        total = len(self._ordered_entries())
-        pages = _page_count(total)
+        pages = self._page_count()
         self._page = max(0, min(self._page, pages - 1))
 
     def _ordered_entries(self) -> list:
         """All combatants in initiative order, with pending/left_combat/unacted monsters at bottom."""
-        combatants = self._snapshot["combatants"] if self._snapshot is not None else []
         def _goes_to_bottom(e: Combatant):
             return e.pending or e.left_combat or (e.type is Type.MONSTER and not e.has_acted)
+
+        combatants = self._snapshot["combatants"] if self._snapshot is not None else []
         in_order = [e for e in combatants if not _goes_to_bottom(e)]
         bottom   = [e for e in combatants if _goes_to_bottom(e)]
         return in_order + bottom
 
     def _page_entries(self) -> list:
         entries = self._ordered_entries()
-        start   = self._page * PAGE_SIZE
-        return entries[start : start + PAGE_SIZE]
+        start   = self._page * MIN_PAGE_SIZE
+        return entries[start : start + MIN_PAGE_SIZE]
 
     # ── Redraw ────────────────────────────────────────────────────────────────
 
@@ -103,7 +100,7 @@ class CombatView(tk.Frame):
         # c        = self.canvas
         all_entries = self._ordered_entries()
         total    = len(all_entries)
-        pages    = _page_count(total)
+        pages    = self._page_count()
         entries  = self._page_entries()
 
         if total == 0:
@@ -119,20 +116,19 @@ class CombatView(tk.Frame):
         # Fixed row height: always the tall version (with conditions space)
         # avail_h  = H - header_h - pad * 2
         # row_h    = max(30, min(int((ROW_HEIGHT_BASE + COND_EXTRA) * scale),
-        #                        avail_h // PAGE_SIZE))
+        #                        avail_h // MIN_PAGE_SIZE))
 
         self._draw_header(snap, W, header_h, pad, scale, self._page + 1, pages)
 
-        # y = header_h + pad
         gap = int(6 * scale)
         combatant: Combatant
-        for index, combatant in enumerate(entries):
+        for index, combatant in enumerate(entries, 0):
             combatant_view = CombatantView(self, combatant, self._image_cache)
+            combatant_view.pack(fill="x", expand=False, pady= ((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
             if combatant_view.is_unrevealed():
                 combatant_view.draw_unrevealed_row()
             else:
-                combatant_view.draw_row(snap["current_index"] == index, scale)
-            combatant_view.pack(fill="x", expand=False, pady=gap)
+                combatant_view.draw_row(snap["current_index"] == index)
             # y += row_h + gap
 
     # ── Header ────────────────────────────────────────────────────────────────

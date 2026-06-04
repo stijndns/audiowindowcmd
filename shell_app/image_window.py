@@ -66,7 +66,7 @@ class ImageWindow(tk.Frame):
         new_w = max(1, int(img_w * scale))
         new_h = max(1, int(img_h * scale))
 
-        img = img.resize((new_w, new_h), Image.LANCZOS)
+        img = img.resize((new_w, new_h), Image.LANCZOS) # type: ignore
         self.image = ImageTk.PhotoImage(img)
         self.label.config(image=self.image)
 

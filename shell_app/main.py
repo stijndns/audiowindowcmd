@@ -2,8 +2,8 @@ import tkinter as tk
 import threading
 import queue
 
-from .image_window import ImageWindow
-from .shell_commands import ImageShell
+from shell_app.image_window import ImageWindow
+from shell_app.shell_commands import ImageShell
 
 def shell_thread():
     shell = ImageShell(command_queue, win)

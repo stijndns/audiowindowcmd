@@ -716,7 +716,7 @@ Shorthand commands (usable outside 'combat ...'):
         if c is None:
             print(f"[!] Combatant '{name}' not found.")
             return
-        if c.type not in ("npc", "monster"):
+        if c.type not in (Type.NPC, Type.MONSTER):
             print(f"[!] Legendary actions can only be assigned to NPCs and monsters.")
             return
         msg = c.add_resource("legendary_actions", maximum)
@@ -739,7 +739,7 @@ Shorthand commands (usable outside 'combat ...'):
             print("[!] initiative, hp_max, and hp_current must be integers.")
             return
 
-        if ctype not in ("pc", "npc", "monster"):
+        if ctype not in Type:
             print("[!] type must be one of: pc  npc  monster")
             return
 

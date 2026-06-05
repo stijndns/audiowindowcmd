@@ -6,7 +6,7 @@ No rule-checking; purely a bookkeeping layer.
 """
 
 from typing import Optional
-
+from copy import deepcopy
 from shell_app.combat.combatant import Combatant
 
 class Combat:
@@ -191,6 +191,6 @@ class Combat:
         return {
             "active": self.active,
             "round": self.round,
-            "combatants": order,
+            "combatants": deepcopy(order),
             "current_index": self.turn_index if self.active else -1
         }

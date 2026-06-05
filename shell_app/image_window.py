@@ -75,8 +75,8 @@ class ImageWindow(tk.Frame):
     def fullscreen(self):
         self.restore()
 
-        x = self.winfo_x()
-        y = self.winfo_y()
+        x = self.winfo_toplevel().winfo_x()
+        y = self.winfo_toplevel().winfo_y()
 
         for m in get_monitors():
             if m.x <= x < m.x + m.width and m.y <= y < m.y + m.height:

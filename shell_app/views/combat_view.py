@@ -135,7 +135,7 @@ class CombatView(tk.Frame):
             if combatant_view.is_unrevealed():
                 combatant_view.draw_unrevealed_row()
             else:
-                combatant_view.draw_row(snap["current_index"] % MIN_PAGE_SIZE== index)
+                combatant_view.draw_row(snap["current_index"] - self._page * MIN_PAGE_SIZE== index)
         for index in range(len(entries), len(self.view_cache)):
             self.view_cache[index].pack_forget()
 

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Optional
 
 # ── HP bar thresholds (fraction of max HP) ──────────────────────────────────
 BAR_GREEN  = 0.75   # > 75 %  → green
@@ -62,7 +63,7 @@ class Combatant:
 
     @property
     def is_active(self) -> bool:
-        return self.status == "active"
+        return self.status is self.Status.ACTIVE
 
     # ── HP helpers ──────────────────────────────────────────────────────────
 
@@ -139,11 +140,11 @@ class Combatant:
         """Single-line DM summary."""
         res_str = "  ".join(str(r) for r in self.resources.values())
         cond_str = ", ".join(self.conditions)
-        if self.status == "dead":
+        if self.status is self.Status.DEAD:
             status = " [DEAD]"
-        elif self.status == "dying":
+        elif self.status is self.Status.DYING:
             status = " [DYING]"
-        elif self.status == "incapacitated":
+        elif self.status is self.Status.INCAPACITATED:
             status = " [INCAPACITATED]"
         elif self.left_combat:
             status = " [LEFT COMBAT]"

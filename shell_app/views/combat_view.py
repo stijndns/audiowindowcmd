@@ -25,6 +25,8 @@ class CombatView(tk.Frame):
         # Cache: (filename, row_h) -> ImageTk.PhotoImage with fade applied
         self._image_cache: dict = {}
         self.bind("<Configure>", lambda e: self._redraw())
+        self.view_cache: list[CombatantView] = []
+        self.header = None
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -87,9 +89,6 @@ class CombatView(tk.Frame):
     def _redraw(self):
         if self._snapshot is None:
             return
-        for item in self.winfo_children():
-            if isinstance(item, tk.Widget):
-              item.pack_forget()
         W = self.winfo_width()
         H = self.winfo_height()
         if W < 10 or H < 10:
@@ -97,7 +96,6 @@ class CombatView(tk.Frame):
         self._draw(self._snapshot, W, H)
 
     def _draw(self, snap: dict, W: int, H: int):
-        # c        = self.canvas
         all_entries = self._ordered_entries()
         total    = len(all_entries)
         pages    = self._page_count()
@@ -123,19 +121,37 @@ class CombatView(tk.Frame):
         gap = int(6 * scale)
         combatant: Combatant
         for index, combatant in enumerate(entries, 0):
-            combatant_view = CombatantView(self, combatant, self._image_cache)
-            combatant_view.pack(fill="x", expand=False, pady= ((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
+            if len(self.view_cache) <= index:
+                combatant_view = CombatantView(self, combatant, self._image_cache)
+                self.view_cache.append(combatant_view)
+                combatant_view.pack(fill="x", expand=False, pady= ((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
+            else:
+                combatant_view = self.view_cache[index]
+                if not combatant_view.winfo_ismapped():
+                    combatant_view.pack(fill="x", expand=False, pady=((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
+                combatant_view.delete('all')
+                combatant_view.combatant = combatant
+
             if combatant_view.is_unrevealed():
                 combatant_view.draw_unrevealed_row()
             else:
-                combatant_view.draw_row(snap["current_index"] == index)
-            # y += row_h + gap
+                combatant_view.draw_row(snap["current_index"] % MIN_PAGE_SIZE== index)
+        for index in range(len(entries), len(self.view_cache)):
+            self.view_cache[index].pack_forget()
+
 
     # ── Header ────────────────────────────────────────────────────────────────
 
     def _draw_header(self, snap, W, header_h, pad, scale, page, pages):
-        c = tk.Canvas(self, bg=PALETTE["surface"], bd=0, highlightthickness=0, width=W, height=header_h)
-        c.pack()
+        c: tk.Canvas
+        if self.header is None:
+            c = tk.Canvas(self, bg=PALETTE["surface"], bd=0, highlightthickness=0, height=header_h)
+            self.header = c
+            c.pack(fill="x", expand=False)
+        else:
+            c = self.header
+            c.delete('all')
+            c.config(height=header_h)
         c.create_line(0, header_h, W, header_h, fill=PALETTE["border"], width=1)
 
         active    = snap["active"]

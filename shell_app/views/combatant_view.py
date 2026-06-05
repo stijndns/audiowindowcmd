@@ -1,10 +1,14 @@
 import os
 import tkinter as tk
+from typing import TYPE_CHECKING
 
 from PIL import ImageTk, Image
 
 from .styling import *
-from ..combat import Type, Combatant, Status
+from ..combat import Type, Status
+
+if TYPE_CHECKING:
+    from ..combat import Combatant
 
 INITIATIVE_W    = 52
 class CombatantView(tk.Canvas):
@@ -101,7 +105,7 @@ class CombatantView(tk.Canvas):
         is_dimmed  = is_dead or is_dying   # greyed colours but may still show turn indicator
         accent     = TYPE_ACCENT.get(self.combatant.type.value, PALETTE["text_muted"])
 
-        self.update()
+        self.update_idletasks()
         row_h = self.row_h
 
         x_right    = self.winfo_width() - (1 if is_current else 2)
@@ -184,7 +188,7 @@ class CombatantView(tk.Canvas):
 
     # ── Unrevealed / pending row ──────────────────────────────────────────────
     def draw_unrevealed_row(self):
-        self.update()
+        self.update_idletasks()
         row_h = self.row_h
 
         # Initiative:

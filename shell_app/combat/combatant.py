@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Optional
 
 # ── HP bar thresholds (fraction of max HP) ──────────────────────────────────
@@ -28,13 +28,13 @@ class Resource:
     def __str__(self):
         return f"{self.name} {self.current}/{self.maximum}"
 
-class Status(Enum):
+class Status(StrEnum):
     ACTIVE = "active"
     DYING = "dying"
     DEAD = "dead"
     INCAPACITATED = "incapacitated"
 
-class Type(Enum):
+class Type(StrEnum):
     NPC = "npc"
     PC = "pc"
     MONSTER = "monster"

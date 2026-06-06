@@ -28,20 +28,21 @@ class Resource:
     def __str__(self):
         return f"{self.name} {self.current}/{self.maximum}"
 
+class Status(Enum):
+    ACTIVE = "active"
+    DYING = "dying"
+    DEAD = "dead"
+    INCAPACITATED = "incapacitated"
+
+class Type(Enum):
+    NPC = "npc"
+    PC = "pc"
+    MONSTER = "monster"
+    OTHER: str
+
 @dataclass
 class Combatant:
     """One participant in combat (PC, NPC, or monster)."""
-    class Type(Enum):
-        NPC = "npc"
-        PC = "pc"
-        MONSTER = "monster"
-        OTHER: str
-
-    class Status(Enum):
-        ACTIVE = "active"
-        DYING = "dying"
-        DEAD = "dead"
-        INCAPACITATED = "incapacitated"
 
     name: str
     type: Type
@@ -63,7 +64,7 @@ class Combatant:
 
     @property
     def is_active(self) -> bool:
-        return self.status is self.Status.ACTIVE
+        return self.status is Status.ACTIVE
 
     # ── HP helpers ──────────────────────────────────────────────────────────
 
@@ -140,11 +141,11 @@ class Combatant:
         """Single-line DM summary."""
         res_str = "  ".join(str(r) for r in self.resources.values())
         cond_str = ", ".join(self.conditions)
-        if self.status is self.Status.DEAD:
+        if self.status is Status.DEAD:
             status = " [DEAD]"
-        elif self.status is self.Status.DYING:
+        elif self.status is Status.DYING:
             status = " [DYING]"
-        elif self.status is self.Status.INCAPACITATED:
+        elif self.status is Status.INCAPACITATED:
             status = " [INCAPACITATED]"
         elif self.left_combat:
             status = " [LEFT COMBAT]"

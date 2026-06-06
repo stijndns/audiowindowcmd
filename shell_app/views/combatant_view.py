@@ -24,7 +24,7 @@ class CombatantView(tk.Canvas):
         """Return True if this self.combatant should be rendered via _draw_unrevealed_row."""
         return (self.combatant.pending
                 or self.combatant.left_combat
-                or self.combatant.status in ("dead", "incapacitated")
+                or self.combatant.status in (Status.DEAD, Status.INCAPACITATED)
                 or (self.combatant.type is Type.MONSTER and not self.combatant.has_acted))
 
     @property

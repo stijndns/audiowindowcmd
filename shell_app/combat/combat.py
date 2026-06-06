@@ -7,7 +7,7 @@ No rule-checking; purely a bookkeeping layer.
 
 from typing import Optional
 from copy import deepcopy
-from shell_app.combat.combatant import Combatant
+from .combatant import Combatant, Status, Type
 
 class Combat:
     """Manages the full combat encounter."""
@@ -38,7 +38,7 @@ class Combat:
                 return None
         c = Combatant(
             name=name,
-            type=Combatant.Type(combatant_type.lower()),
+            type=Type(combatant_type.lower()),
             initiative=initiative,
             hp_current=hp_current if hp_current is not None else hp_max,
             hp_max=hp_max,
@@ -102,7 +102,7 @@ class Combat:
         return [c for c in self._order()
                 if not c.pending
                 and not c.left_combat
-                and c.status not in ("dead", "incapacitated")]
+                and c.status not in (Status.DEAD, Status.INCAPACITATED)]
 
     def next_turn(self) -> str:
         if not self.active:

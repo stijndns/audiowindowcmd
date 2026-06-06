@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     import tkinter as tk
 
 from .utils import tab_completion
-from .combat import Combat, Combatant, Type
+from .combat import Combat, Combatant, Type, Status
 from .views.combat_view import MIN_PAGE_SIZE
 
 current_os = platform.system()
@@ -318,22 +318,22 @@ Shorthand commands (usable outside 'combat ...'):
         else:
             print(f"[!] Unknown combat sub-command '{sub}'. Type 'combat help'.")
 
-    def _prompt_zero_hp_status(self, combatant) -> str:
+    def _prompt_zero_hp_status(self, combatant) -> Status:
         """Prompt DM to choose status when a combatant drops to 0 or below HP.
         If already dying, only offer dead or remain dying.
         Returns the chosen status string."""
-        already_dying = combatant.status == "dying"
+        already_dying = combatant.status is Status.DYING
         if already_dying:
             print(f"[?] {combatant.name} is already DYING and took more damage.")
             print("    1. Dead")
             print("    2. Remain Dying")
-            options = ["dead", "dying"]
+            options = [Status.DEAD, Status.DYING]
         else:
             print(f"[?] {combatant.name} dropped to {combatant.hp_current} HP. Status?")
             print("    1. Dead")
             print("    2. Dying")
             print("    3. Incapacitated")
-            options = ["dead", "dying", "incapacitated"]
+            options = [Status.DEAD, Status.DYING, Status.INCAPACITATED]
         while True:
             try:
                 idx = int(input("    > ").strip()) - 1
@@ -347,18 +347,18 @@ Shorthand commands (usable outside 'combat ...'):
         """Check if combatant is at or below 0 HP and prompt for status if needed."""
         if combatant.hp_current > 0:
             # Recovered — restore to active
-            if combatant.status in ("dying", "incapacitated"):
-                combatant.status = "active"
+            if combatant.status in (Status.DYING, Status.INCAPACITATED):
+                combatant.status = Status.ACTIVE
                 print(f"    [+] {combatant.name} recovered and is now active.")
                 self._log_entry(f"[status] {combatant.name} recovered to active.")
             return
         # At or below 0 — prompt if not already dead
-        if combatant.status == "dead":
+        if combatant.status is Status.DEAD:
             return
         new_status = self._prompt_zero_hp_status(combatant)
         combatant.status = new_status
-        print(f"    [+] {combatant.name} is now [{new_status.upper()}].")
-        self._log_entry(f"[status] {combatant.name} → [{new_status.upper()}].")
+        print(f"    [+] {combatant.name} is now [{new_status.value.upper()}].")
+        self._log_entry(f"[status] {combatant.name} → [{new_status.value.upper()}].")
 
     def _prompt_resource_spend(self, actor) -> str:
         """Prompt DM to choose which resource the actor spends for an out-of-turn action.

@@ -71,12 +71,10 @@ class CombatView(tk.Frame):
 
     def _ordered_entries(self) -> list:
         """All combatants in initiative order, with pending/left_combat/unacted monsters at bottom."""
-        def _goes_to_bottom(e: Combatant):
-            return e.pending or e.left_combat or (e.type is Type.MONSTER and not e.has_acted)
 
         combatants = self._snapshot["combatants"] if self._snapshot is not None else []
-        in_order = [e for e in combatants if not _goes_to_bottom(e)]
-        bottom   = [e for e in combatants if _goes_to_bottom(e)]
+        in_order = [c for c in combatants if c.is_in_combat()]
+        bottom   = [c for c in combatants if not c.is_in_combat()]
         return in_order + bottom
 
     def _page_entries(self) -> list:

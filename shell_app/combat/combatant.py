@@ -135,6 +135,11 @@ class Combatant:
                 return f"Removed condition '{condition}' from {self.name}"
         return f"[!] {self.name} does not have condition '{condition}'"
 
+    # ── Combat helpers ───────────────────────────────────────────────────────
+
+    def is_in_combat(self) -> bool:
+        return not self.pending and not self.left_combat and self.status not in (Status.DEAD, Status.INCAPACITATED)
+
     # ── Display helpers ──────────────────────────────────────────────────────
 
     def summary(self) -> str:

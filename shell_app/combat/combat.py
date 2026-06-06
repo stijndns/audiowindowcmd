@@ -84,7 +84,7 @@ class Combat:
     def start(self) -> str:
         if not self.combatants:
             return "[!] No combatants added yet."
-        if not self._non_pending_order():
+        if not self._in_combat_order():
             return "[!] All combatants are pending."
         self.active = True
         self.round = 1
@@ -94,20 +94,17 @@ class Combat:
         return f"Combat started! Round 1. First up: {first.name}"
 
     def current_combatant(self) -> Combatant:
-        order = self._non_pending_order()
+        order = self._in_combat_order()
         return order[self.turn_index]
 
-    def _non_pending_order(self) -> list[Combatant]:
+    def _in_combat_order(self) -> list[Combatant]:
         """Return only active (non-pending, non-left) combatants in initiative order."""
-        return [c for c in self._order()
-                if not c.pending
-                and not c.left_combat
-                and c.status not in (Status.DEAD, Status.INCAPACITATED)]
+        return [c for c in self._order() if c.is_in_combat()]
 
     def next_turn(self) -> str:
         if not self.active:
             return "[!] Combat is not active. Use 'combat start'."
-        order = self._non_pending_order()
+        order = self._in_combat_order()
         if not order:
             return "[!] No combatants."
 
@@ -122,7 +119,7 @@ class Combat:
             new_round_msg = f"\n  *** Round {self.round} begins! ***"
 
         # Re-fetch order after potential pending changes
-        order = self._non_pending_order()
+        order = self._in_combat_order()
 
         # Mark the incoming combatant as having acted (reveals monsters on player screen)
         # Also reset reaction and legendary actions at the start of their turn (D&D convention)

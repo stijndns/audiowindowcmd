@@ -128,6 +128,7 @@ class CombatView(tk.Frame):
                 if not combatant_view.winfo_ismapped():
                     combatant_view.pack(fill="x", expand=False, pady=((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
                 combatant_view.delete('all')
+                combatant_view.update_config()
                 combatant_view.combatant = combatant
 
             if combatant_view.is_unrevealed():

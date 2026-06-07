@@ -19,6 +19,11 @@ class CombatantView(tk.Canvas):
         self.combatant = combatant
         self._image_cache = img_cache
 
+    def update_config(self):
+        self._scale = min(self.master.winfo_width() / 900, self.master.winfo_height() / 600, 1.5)
+        self.row_h = max(30, int((ROW_HEIGHT_BASE + COND_EXTRA) * self._scale))
+        self.configure(height=self.row_h+2)
+
     # ── helper functions───────────────────────────────────────────────────────
     def is_unrevealed(self) -> bool:
         """Return True if this self.combatant should be rendered via _draw_unrevealed_row."""

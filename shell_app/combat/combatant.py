@@ -138,7 +138,10 @@ class Combatant:
     # ── Combat helpers ───────────────────────────────────────────────────────
 
     def is_in_combat(self) -> bool:
-        return not self.pending and not self.left_combat and self.status not in (Status.DEAD, Status.INCAPACITATED)
+        return not self.pending and not self.left_combat #and self.status not in (Status.DEAD, Status.INCAPACITATED)
+
+    def hidden_initiative(self) -> bool:
+        return self.type is Type.MONSTER and not self.has_acted
 
     # ── Display helpers ──────────────────────────────────────────────────────
 

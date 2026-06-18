@@ -7,7 +7,7 @@ No rule-checking; purely a bookkeeping layer.
 
 from typing import Optional
 from copy import deepcopy
-from .combatant import Combatant, Status, Type
+from .combatant import Combatant, Type
 
 class Combat:
     """Manages the full combat encounter."""
@@ -168,10 +168,10 @@ class Combat:
 
     # ── Display ──────────────────────────────────────────────────────────────
 
-    def status(self) -> str:
+    def status(self) -> list[str]:
         """Full DM status printout."""
         if not self.combatants:
-            return "[i] No active combat."
+            return ["[i] No active combat."]
         order = self._order()
         lines = [
             f"══ Round {self.round} {'(active)' if self.active else '(not started)'} ══",
@@ -180,7 +180,7 @@ class Combat:
         for i, c in enumerate(order):
             arrow = "▶ " if c is current else "  "
             lines.append(f"{arrow}{c.summary()}")
-        return "\n".join(lines)
+        return lines
 
     def snapshot(self) -> dict:
         """Return a dict for the player screen renderer."""

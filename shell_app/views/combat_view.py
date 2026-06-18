@@ -22,7 +22,6 @@ class CombatView(tk.Frame):
         super().__init__(root, bg=PALETTE["bg"])
         self._snapshot: dict | None = None
         self._page: int = 0          # 0-based current page index
-        # Cache: (filename, row_h) -> ImageTk.PhotoImage with fade applied
         self._image_cache: dict = {}
         self.bind("<Configure>", lambda e: self._redraw((e.width, e.height)))
         self.view_cache: list[CombatantView] = []
@@ -38,7 +37,6 @@ class CombatView(tk.Frame):
         self._snapshot = snapshot
         if page is not None:
             self._page = page
-        self._image_cache.clear()   # row_h may have changed
         self._clamp_page()
         self._redraw()
 
@@ -74,8 +72,6 @@ class CombatView(tk.Frame):
 
     def _ordered_entries(self) -> list:
         """All combatants in initiative order, with pending/left_combat/unacted monsters at bottom."""
-
-
         combatants = self._snapshot["combatants"] if self._snapshot is not None else []
         in_order = [c for c in combatants if c.is_in_combat() and not c.hidden_initiative()]
         bottom   = [c for c in combatants if not c.is_in_combat() or c.hidden_initiative()]
@@ -98,6 +94,7 @@ class CombatView(tk.Frame):
         self._draw()
 
     def resize(self):
+        self._image_cache.clear()   # row_h may have changed
         self.scale = min(self.W / 900, self.H / 600, 1.5)
         gap = int(6 * self.scale)
         for index, combatant_view in enumerate(self.view_cache, 0):
@@ -128,7 +125,9 @@ class CombatView(tk.Frame):
                 if not combatant_view.winfo_ismapped():
                     combatant_view.pack(fill="x", expand=False, pady=((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
 
+        # update all sizes of widgets so the canvas can correctly allign on right side
         self.update_idletasks()
+
         for index, combatant in enumerate(entries, 0):
             combatant_view = self.view_cache[index]
             combatant_view.delete('all')

@@ -1,6 +1,6 @@
 # ── Layout constants ─────────────────────────────────────────────────────────
 FONT_FAMILY     = "Consolas"
-MIN_PAGE_SIZE       = 6             # combatants per page
+MIN_PAGE_SIZE   = 6             # combatants per page
 ROUND_FONT_SIZE = 22
 NAME_FONT_SIZE  = 15
 STAT_FONT_SIZE  = 12

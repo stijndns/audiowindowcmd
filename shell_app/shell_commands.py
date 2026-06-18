@@ -48,7 +48,7 @@ class ImageShell(cmd.Cmd):
         self._push_command("combat_update", (self._combat.snapshot(), page))
 
     def _start_combat_view(self):
-        self._push_command("combat_enter", (self._combat.snapshot(), 0))
+        self._push_command("combat_enter", self._combat.snapshot())
 
     def _stop_combat_view(self):
         self._push_command("combat_exit", None)
@@ -259,11 +259,12 @@ Shorthand commands (usable outside 'combat ...'):
             self._resolve_ties()
             msg = self._combat.start()
             print(f"[+] {msg}")
-            self._start_combat_view()
-            self._log_reset(include_status=True)
-            # Log first turn marker
-            first = self._combat.current_combatant()
-            self._log_turn_marker(first.name, 1, new_round=False)
+            if self._combat.active:  # succesfully started, nothing went wrong
+              self._start_combat_view()
+              self._log_reset(include_status=True)
+              # Log first turn marker
+              first = self._combat.current_combatant()
+              self._log_turn_marker(first.name, 1, new_round=False)
 
         elif sub == "status":
             print(self._combat.status())

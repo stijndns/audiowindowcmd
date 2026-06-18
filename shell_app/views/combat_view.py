@@ -11,7 +11,7 @@ import math
 from .styling import *
 from ..combat import Combatant, Type
 from .combatant_view import CombatantView
-
+from typing import Tuple
 
 class CombatView(tk.Frame):
     """Draws the combat tracker directly onto the Tk Frame which will be shown in the full root.
@@ -24,9 +24,12 @@ class CombatView(tk.Frame):
         self._page: int = 0          # 0-based current page index
         # Cache: (filename, row_h) -> ImageTk.PhotoImage with fade applied
         self._image_cache: dict = {}
-        self.bind("<Configure>", lambda e: self._redraw())
+        self.bind("<Configure>", lambda e: self._redraw((e.width, e.height)))
         self.view_cache: list[CombatantView] = []
         self.header = None
+        self.H = 0
+        self.W = 0
+        self.scale = 0
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -85,64 +88,63 @@ class CombatView(tk.Frame):
 
     # ── Redraw ────────────────────────────────────────────────────────────────
 
-    def _redraw(self):
+    def _redraw(self, new_size: Tuple[int, int] | None = None):
         if self._snapshot is None:
             return
-        W = self.winfo_width()
-        H = self.winfo_height()
-        if W < 10 or H < 10:
-            return
-        self._draw(self._snapshot, W, H)
+        if new_size is not None:
+            self.W = new_size[0]
+            self.H = new_size[1]
+            self.resize()
+        self._draw()
 
-    def _draw(self, snap: dict, W: int, H: int):
-        all_entries = self._ordered_entries()
-        total    = len(all_entries)
+    def resize(self):
+        self.scale = min(self.W / 900, self.H / 600, 1.5)
+        gap = int(6 * self.scale)
+        for index, combatant_view in enumerate(self.view_cache, 0):
+            if combatant_view.winfo_ismapped():
+                combatant_view.pack_configure(pady=((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
+
+    def _draw(self):
+        assert self._snapshot is not None
+
         pages    = self._page_count()
         entries  = self._page_entries()
 
-        if total == 0:
-            # c.create_text(W // 2, H // 2,
-            #     text="No combatants yet.\nUse  combat add  in the shell.",
-            #     fill=PALETTE["text_muted"], font=(FONT_FAMILY, 14), justify="center")
-            return
+        pad      = int(PADDING * self.scale)
+        header_h = int(60 * self.scale)
 
-        scale    = min(W / 900, H / 600, 1.5)
-        pad      = int(PADDING * scale)
-        header_h = int(60 * scale)
+        self._draw_header(self._snapshot, self.W, header_h, pad, self._page + 1, pages)
 
-        # Fixed row height: always the tall version (with conditions space)
-        # avail_h  = H - header_h - pad * 2
-        # row_h    = max(30, min(int((ROW_HEIGHT_BASE + COND_EXTRA) * scale),
-        #                        avail_h // MIN_PAGE_SIZE))
-
-        self._draw_header(snap, W, header_h, pad, scale, self._page + 1, pages)
-
-        gap = int(6 * scale)
+        gap = int(6 * self.scale)
         combatant: Combatant
         for index, combatant in enumerate(entries, 0):
             if len(self.view_cache) <= index:
-                combatant_view = CombatantView(self, combatant, self._image_cache)
+                combatant_view = CombatantView(self, combatant, self._image_cache, self.scale)
                 self.view_cache.append(combatant_view)
                 combatant_view.pack(fill="x", expand=False, pady= ((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
             else:
                 combatant_view = self.view_cache[index]
+                combatant_view.update_config(self.scale)
                 if not combatant_view.winfo_ismapped():
                     combatant_view.pack(fill="x", expand=False, pady=((gap * 2 if index == 0 else gap), 2), padx=combatant_view.padding)
-                combatant_view.delete('all')
-                combatant_view.update_config()
-                combatant_view.combatant = combatant
 
+        self.update_idletasks()
+        for index, combatant in enumerate(entries, 0):
+            combatant_view = self.view_cache[index]
+            combatant_view.delete('all')
+            combatant_view.combatant = combatant
             if combatant_view.is_unrevealed():
                 combatant_view.draw_unrevealed_row()
             else:
-                combatant_view.draw_row(snap["current_index"] - self._page * MIN_PAGE_SIZE== index)
+                combatant_view.draw_row(self._snapshot["current_index"] - self._page * MIN_PAGE_SIZE == index)
+
         for index in range(len(entries), len(self.view_cache)):
             self.view_cache[index].pack_forget()
 
 
     # ── Header ────────────────────────────────────────────────────────────────
 
-    def _draw_header(self, snap, W, header_h, pad, scale, page, pages):
+    def _draw_header(self, snap, W, header_h, pad, page, pages):
         c: tk.Canvas
         if self.header is None:
             c = tk.Canvas(self, bg=PALETTE["surface"], bd=0, highlightthickness=0, height=header_h)
@@ -160,14 +162,14 @@ class CombatView(tk.Frame):
         c.create_text(pad, header_h // 2,
             text=title,
             fill=PALETTE["gold"],
-            font=(FONT_FAMILY, scaled_font(ROUND_FONT_SIZE, scale), "bold"),
+            font=(FONT_FAMILY, scaled_font(ROUND_FONT_SIZE, self.scale), "bold"),
             anchor="w")
 
         page_text = f"Page {page} / {pages}"
         c.create_text(W - pad, header_h // 2,
             text=page_text,
             fill=PALETTE["text_muted"],
-            font=(FONT_FAMILY, scaled_font(MUTED_FONT_SIZE, scale)),
+            font=(FONT_FAMILY, scaled_font(MUTED_FONT_SIZE, self.scale)),
             anchor="e")
 
     # ── Pack helpers ──────────────────────────────────────────────────────────
@@ -177,4 +179,4 @@ class CombatView(tk.Frame):
 
     def show(self):
         self.pack(fill="both", expand=True)
-        self._redraw()
+        self._redraw((self.winfo_width(), self.winfo_height()))

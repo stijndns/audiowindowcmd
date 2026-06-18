@@ -103,10 +103,12 @@ class ImageWindow(tk.Frame):
 
     # ── Combat mode ───────────────────────────────────────────────────────────
 
-    def enter_combat_mode(self):
+    def enter_combat_mode(self, snapshot):
         """Hide image label, show combat canvas."""
         self._combat_mode = True
         self.pack_forget()
+        self.combat_view._snapshot = snapshot
+        self.combat_view._page = 0
         self.combat_view.show()
 
     def exit_combat_mode(self):
@@ -115,10 +117,6 @@ class ImageWindow(tk.Frame):
         self.combat_view.hide()
         self.pack(fill="both", expand=True)
         self.render_image()
-
-    def update_combat_view(self, snapshot: dict):
-        """Push a fresh snapshot to the player screen."""
-        self.combat_view.render(snapshot)
 
     # ── Command queue polling ─────────────────────────────────────────────────
 
@@ -144,12 +142,7 @@ class ImageWindow(tk.Frame):
             print("[+] Minimized window")
 
         elif cmd == "combat_enter":
-            self.enter_combat_mode()
-            if arg is not None:
-                snapshot, page = arg
-                self.combat_view._snapshot = snapshot
-                self.combat_view._page = page
-                self.after(50, self.combat_view._redraw)
+            self.enter_combat_mode(arg)
 
         elif cmd == "combat_exit":
             self.exit_combat_mode()

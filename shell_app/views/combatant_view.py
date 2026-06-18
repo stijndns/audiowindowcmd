@@ -12,17 +12,18 @@ if TYPE_CHECKING:
 
 INITIATIVE_W    = 52
 class CombatantView(tk.Canvas):
-    def __init__(self, parent: tk.Widget, combatant: Combatant, img_cache: dict):
-        self._scale = min(parent.winfo_width() / 900, parent.winfo_height() / 600, 1.5)
+    def __init__(self, parent: tk.Widget, combatant: Combatant, img_cache: dict, scale: float):
+        self._scale = scale
         self.row_h = max(30, int((ROW_HEIGHT_BASE + COND_EXTRA) * self._scale))
         super().__init__(parent, bg=PALETTE["bg"], highlightthickness=0, bd=0, height=self.row_h+2) # max border width extra needed
         self.combatant = combatant
         self._image_cache = img_cache
 
-    def update_config(self):
-        self._scale = min(self.master.winfo_width() / 900, self.master.winfo_height() / 600, 1.5)
+    def update_config(self, scale: float):
+        self._scale = scale
         self.row_h = max(30, int((ROW_HEIGHT_BASE + COND_EXTRA) * self._scale))
-        self.configure(height=self.row_h+2)
+        if self.config("height") != self.row_h + 2:
+            self.configure(height=self.row_h+2)
 
     # ── helper functions───────────────────────────────────────────────────────
     def is_unrevealed(self) -> bool:
@@ -69,12 +70,18 @@ class CombatantView(tk.Canvas):
         left = self.init_col_w + 2 #respect the border
         self.create_rectangle(left, 2, left + 4, self.row_h, fill=colour, width=0)
 
+    def get_background_color(self, is_current: bool) -> str:
+        return PALETTE["active_bg"] if is_current else PALETTE["bg"]
+
+    def get_border_color(self, is_current: bool) -> str:
+        return PALETTE["active_border"] if is_current else PALETTE["border"]
+
     def _create_background(self, is_current: bool):
         right = self.winfo_width() - (1 if is_current else 2)
         bottom = self.row_h + (1 if is_current else 0)
         self.create_rectangle(self.init_col_w + 1, 1, right, bottom,
-            fill=PALETTE["active_bg"] if is_current else PALETTE["bg"],
-            outline=PALETTE["active_border"] if is_current else PALETTE["border"],
+            fill=self.get_background_color(is_current),
+            outline=self.get_border_color(is_current),
             width=2 if is_current else 1)
 
     def _create_badge(self, text_colour: str, pos_y: int):
@@ -110,10 +117,10 @@ class CombatantView(tk.Canvas):
         is_dimmed  = is_dead or is_dying   # greyed colours but may still show turn indicator
         accent     = TYPE_ACCENT.get(self.combatant.type.value, PALETTE["text_muted"])
 
-        self.update_idletasks()
         row_h = self.row_h
 
-        x_right    = self.winfo_width() - (1 if is_current else 2)
+        x_right    = self.winfo_width() - 2
+
         inner_pad  = self.inner_padding
 
         # Initiative column
@@ -193,7 +200,6 @@ class CombatantView(tk.Canvas):
 
     # ── Unrevealed / pending row ──────────────────────────────────────────────
     def draw_unrevealed_row(self):
-        self.update_idletasks()
         row_h = self.row_h
 
         # Initiative:

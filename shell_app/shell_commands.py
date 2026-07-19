@@ -1,13 +1,17 @@
-import cmd
 import threading
-import os
-import glob
-from PIL import Image, ImageTk
+from PIL import Image
+import cmd, glob
+import os, platform
+import json
 
-from shell_app.utils import tab_completion
-from shell_app.combat import Combat
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import tkinter as tk
 
-import platform
+from .utils import get_arg_parts, tab_completion
+from .combat import Combat, Combatant, Type, Status
+from .views.combat_view import MIN_PAGE_SIZE
+from .log import CombatLog
 
 current_os = platform.system()
 
@@ -19,31 +23,35 @@ class ImageShell(cmd.Cmd):
     intro = "AudioWindowCMD Shell. Type help or ? to list commands.\nType 'combat help' for combat tracker commands."
     prompt = "> "
 
-    def __init__(self, command_queue):
+    def __init__(self, command_queue, frame: tk.Frame):
         super().__init__()
+        self.root = frame
         self.commands_list = [
             "show", "fullscreen", "restore", "minimize",
             "play", "stop", "volume",
             "combat", "next", "hp", "maxhp", "resource", "condition", "page",
             "exit",
         ]
-        self.command_queue = command_queue
+        self._command_queue = command_queue
         self.vol_user = None
         self._combat = Combat()
-        self._log_entries: list[str] = []
-        self._log_saved: bool = False
+        self._log = CombatLog()
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
+    def _push_command(self, command: str, args):
+        self._command_queue.put((command, args))
+        self.root.event_generate("<<QueueMsg>>")
+
     def _push_combat(self, page: int | None = None):
         """Send the latest combat snapshot to the player window."""
-        self.command_queue.put(("combat_update", (self._combat.snapshot(), page)))
+        self._push_command("combat_update", (self._combat.snapshot(), page))
 
     def _start_combat_view(self):
-        self.command_queue.put(("combat_enter", (self._combat.snapshot(), 0)))
+        self._push_command("combat_enter", self._combat.snapshot())
 
     def _stop_combat_view(self):
-        self.command_queue.put(("combat_exit", None))
+        self._push_command("combat_exit", None)
 
     def _resolve_ties_for(self, init_val: int, tied: list):
         """Prompt the user to order a single group of tied combatants."""
@@ -72,62 +80,23 @@ class ImageShell(cmd.Cmd):
         for init_val, tied in self._combat.tied_initiatives().items():
             self._resolve_ties_for(init_val, tied)
 
-    # ── Combat log helpers ───────────────────────────────────────────────────
-
-    def _log_entry(self, entry: str):
-        """Append an entry to the combat log and mark log as unsaved."""
-        if self._combat.active:
-            self._log_entries.append(entry)
-            self._log_saved = False
-
-    def _log_turn_marker(self, combatant_name: str, round_num: int, new_round: bool = False):
-        """Append a turn marker, optionally with a round header."""
-        if new_round:
-            self._log_entries.append(f"{'─'*60}")
-            self._log_entries.append(f"--- Round {round_num} begins ---")
-        self._log_entries.append(f"--- Round {round_num}: {combatant_name}'s turn ---")
-
-    def _log_reset(self, include_status: bool = False):
-        """Clear the log, optionally seeding with current combat status."""
-        self._log_entries = []
-        self._log_saved = False
-        if include_status:
-            self._log_entries.append("═" * 60)
-            self._log_entries.append("COMBAT START")
-            self._log_entries.append("═" * 60)
-            for line in self._combat.status().splitlines():
-                self._log_entries.append(line)
-            self._log_entries.append("═" * 60)
-
-    def _check_unsaved_log(self) -> bool:
-        """Warn if log has unsaved entries. Returns True if safe to proceed."""
-        if not self._log_entries or self._log_saved:
-            return True
-        print("[!] Combat log has unsaved entries.")
-        while True:
-            ans = input("    Discard log and continue? (Y/N): ").strip().upper()
-            if ans == "Y":
-                return True
-            if ans == "N":
-                return False
-
     # ── Image / window commands ───────────────────────────────────────────────
 
     def do_show(self, arg):
         """Display an image in the window.\nUsage: show <path/to/file>"""
-        self.command_queue.put(("show", arg))
+        self._push_command("show", arg)
 
     def do_fullscreen(self, arg):
         """Switch to fullscreen mode."""
-        self.command_queue.put(("fullscreen", None))
+        self._push_command("fullscreen", None)
 
     def do_restore(self, arg):
         """Restore window to default size (800×600)."""
-        self.command_queue.put(("restore", None))
+        self._push_command("restore", None)
 
     def do_minimize(self, arg):
         """Minimize the window."""
-        self.command_queue.put(("minimize", None))
+        self._push_command("minimize", None)
 
     # ── Audio commands ────────────────────────────────────────────────────────
 
@@ -224,11 +193,7 @@ Shorthand commands (usable outside 'combat ...'):
 
     def do_combat(self, arg):
         """Combat tracker. Type 'combat help' for full usage."""
-        import shlex
-        try:
-            parts = shlex.split(arg.strip())
-        except ValueError:
-            parts = arg.strip().split()
+        parts = get_arg_parts(arg)
         if not parts or parts[0] in ("help", "?"):
             print(self._COMBAT_HELP)
             return
@@ -236,11 +201,10 @@ Shorthand commands (usable outside 'combat ...'):
         sub = parts[0].lower()
 
         if sub == "new":
-            if not self._check_unsaved_log():
+            if not self._log.check_unsaved_log():
                 return
             self._combat.end()
-            self._log_entries = []
-            self._log_saved = False
+            self._log.reset()
             print("[+] Combat roster cleared. Ready for new encounter.")
             self._push_combat()
 
@@ -252,21 +216,21 @@ Shorthand commands (usable outside 'combat ...'):
             msg = self._combat.start()
             print(f"[+] {msg}")
             self._start_combat_view()
-            self._log_reset(include_status=True)
-            # Log first turn marker
-            first = self._combat.current_combatant()
-            if first:
-                self._log_turn_marker(first.name, 1, new_round=False)
+            if self._combat.active:  # succesfully started, nothing went wrong
+                # TODO: dangerous, if manually logged things, this will clear that without warning
+                self._log.reset(self._combat.status())
+                # Log first turn marker
+                first = self._combat.current_combatant()
+                self._log.log_turn_marker(first.name, 1, new_round=False)
 
         elif sub == "status":
-            print(self._combat.status())
+            print("\n".join(self._combat.status()))
 
         elif sub == "end":
-            if not self._check_unsaved_log():
+            if not self._log.check_unsaved_log():
                 return
             msg = self._combat.end()
-            self._log_entries = []
-            self._log_saved = False
+            self._log.reset()
             print(f"[+] {msg}")
             self._stop_combat_view()
 
@@ -305,28 +269,28 @@ Shorthand commands (usable outside 'combat ...'):
         elif sub == "reset" and len(parts) > 1 and parts[1].lower() == "resources":
             msg = self._combat.reset_all_resources()
             print(f"[+] {msg}")
-            self._log_entry("[combat reset resources] All resources reset.")
+            self._log.log_entry("[combat reset resources] All resources reset.")
             self._push_combat()
 
         else:
             print(f"[!] Unknown combat sub-command '{sub}'. Type 'combat help'.")
 
-    def _prompt_zero_hp_status(self, combatant) -> str:
+    def _prompt_zero_hp_status(self, combatant) -> Status:
         """Prompt DM to choose status when a combatant drops to 0 or below HP.
         If already dying, only offer dead or remain dying.
         Returns the chosen status string."""
-        already_dying = combatant.status == "dying"
+        already_dying = combatant.status is Status.DYING
         if already_dying:
             print(f"[?] {combatant.name} is already DYING and took more damage.")
             print("    1. Dead")
             print("    2. Remain Dying")
-            options = ["dead", "dying"]
+            options = [Status.DEAD, Status.DYING]
         else:
             print(f"[?] {combatant.name} dropped to {combatant.hp_current} HP. Status?")
             print("    1. Dead")
             print("    2. Dying")
             print("    3. Incapacitated")
-            options = ["dead", "dying", "incapacitated"]
+            options = [Status.DEAD, Status.DYING, Status.INCAPACITATED]
         while True:
             try:
                 idx = int(input("    > ").strip()) - 1
@@ -340,25 +304,24 @@ Shorthand commands (usable outside 'combat ...'):
         """Check if combatant is at or below 0 HP and prompt for status if needed."""
         if combatant.hp_current > 0:
             # Recovered — restore to active
-            if combatant.status in ("dying", "incapacitated"):
-                combatant.status = "active"
+            if combatant.status in (Status.DYING, Status.INCAPACITATED):
+                combatant.status = Status.ACTIVE
                 print(f"    [+] {combatant.name} recovered and is now active.")
-                self._log_entry(f"[status] {combatant.name} recovered to active.")
+                self._log.log_entry(f"[status] {combatant.name} recovered to active.")
             return
         # At or below 0 — prompt if not already dead
-        if combatant.status == "dead":
+        if combatant.status is Status.DEAD:
             return
         new_status = self._prompt_zero_hp_status(combatant)
         combatant.status = new_status
-        print(f"    [+] {combatant.name} is now [{new_status.upper()}].")
-        self._log_entry(f"[status] {combatant.name} → [{new_status.upper()}].")
+        print(f"    [+] {combatant.name} is now [{new_status.value.upper()}].")
+        self._log.log_entry(f"[status] {combatant.name} → [{new_status.value.upper()}].")
 
     def _prompt_resource_spend(self, actor) -> str:
         """Prompt DM to choose which resource the actor spends for an out-of-turn action.
         Returns 'reaction', 'legendary_actions', or 'special'."""
         options = []
-        current = self._combat.current_combatant()
-        is_current_turn = current is not None and current.name == actor.name
+        is_current_turn = self._combat.current_combatant().name == actor.name
 
         if is_current_turn:
             return "none"   # no prompt needed
@@ -427,6 +390,7 @@ Shorthand commands (usable outside 'combat ...'):
 
         # Prompt resource spend if actor is not the current combatant
         resource_key = self._prompt_resource_spend(actor)
+        amount = ""
 
         # Execute the action
         if action_type == "damage":
@@ -485,14 +449,14 @@ Shorthand commands (usable outside 'combat ...'):
         # Log the action
         current = self._combat.current_combatant()
         turn_ctx = f"Round {self._combat.round}: {current.name}'s turn" if current else "out of turn"
-        self._log_entry(f"[action | {turn_ctx}] {actor_name} → {action_type} → {target_name}" +
-                        (f": {amount}" + (f" {rest[1]}" if len(rest) > 1 else "")
-                         if action_type in ("damage", "heal") else f": {rest[0]}"))
+        self._log.log_entry(f"[action | {turn_ctx}] {actor_name} → {action_type} → {target_name}" +
+                          ((f": {amount}" + (f" {rest[1]}" if len(rest) > 1 else "")) if action_type in ("damage", "heal") else f": {rest[0]}")
+                       )
         if resource_key not in ("none", "special"):
             display = resource_key.replace("_", " ").title()
-            self._log_entry(f"           {actor_name} spent a {display}.")
+            self._log.log_entry(f"           {actor_name} spent a {display}.")
         elif resource_key == "special":
-            self._log_entry(f"           {actor_name}: special case (no resource spent).")
+            self._log.log_entry(f"           {actor_name}: special case (no resource spent).")
         self._push_combat()
 
     def _cmd_combat_remove(self, parts: list[str]):
@@ -512,14 +476,13 @@ Shorthand commands (usable outside 'combat ...'):
             # During combat: mark as left
             if self._combat.remove_combatant_from_active(name):
                 print(f"[+] {name} has left combat.")
-                self._log_entry(f"[combat remove] {name} left combat.")
+                self._log.log_entry(f"[combat remove] {name} left combat.")
                 self._push_combat()
             else:
                 print(f"[!] Combatant '{name}' not found.")
 
     def _cmd_combat_image(self, parts: list[str]):
         """Handle 'combat image <name> <filename>'."""
-        import os
         if len(parts) < 2:
             print("Usage: combat image <name> <filename>")
             return
@@ -539,8 +502,6 @@ Shorthand commands (usable outside 'combat ...'):
 
     def _cmd_combat_export(self, parts: list[str]):
         """Handle 'combat export <filename>'."""
-        import json, os
-
         if self._combat.active:
             print("[!] Cannot export during active combat.")
             return
@@ -561,7 +522,7 @@ Shorthand commands (usable outside 'combat ...'):
         for c in self._combat.combatants:
             entry = {
                 "name":      c.name,
-                "type":      c.combatant_type,
+                "type":      c.type,
                 "hp_max":    c.hp_max,
                 "image":     c.image,
                 "resources": [
@@ -580,8 +541,6 @@ Shorthand commands (usable outside 'combat ...'):
 
     def _cmd_combat_import(self, parts: list[str]):
         """Handle 'combat import <filename>'."""
-        import json, os
-
         if self._combat.active:
             print("[!] Cannot import during active combat.")
             return
@@ -647,7 +606,6 @@ Shorthand commands (usable outside 'combat ...'):
 
             # Restore image if present
             if entry.get("image"):
-                import os
                 img_path = os.path.join("assets", "images", "combatants", entry["image"])
                 if os.path.exists(img_path):
                     c.image = entry["image"]
@@ -661,46 +619,18 @@ Shorthand commands (usable outside 'combat ...'):
 
     def _cmd_combat_log(self, parts: list[str]):
         """Handle 'combat log' and 'combat log save [filename]'."""
-        import os
-        from datetime import datetime
-
         if not parts or parts[0].lower() != "save":
             # Print log to shell
-            if not self._log_entries:
-                print("[i] Combat log is empty.")
-            else:
-                print()
-                for line in self._log_entries:
-                    print(line)
-                print()
-            return
-
-        # Save to file
-        os.makedirs("logs", exist_ok=True)
-        if len(parts) >= 2:
-            filename = parts[1]
-            if not filename.endswith(".txt"):
-                filename += ".txt"
+            self._log.print()
         else:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            filename = f"combat_log_{timestamp}.txt"
-
-        filepath = os.path.join("logs", filename)
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write("\n".join(self._log_entries))
-                f.write("\n")
-            self._log_saved = True
-            print(f"[+] Combat log saved to {filepath}")
-        except Exception as e:
-            print(f"[!] Could not save log: {e}")
+            # Save to file
+            self._log.save(parts)
 
     def _cmd_combat_legendary(self, parts: list[str]):
         """Handle 'combat legendary <name> <max>' command."""
         if len(parts) < 2:
             print("Usage: combat legendary <name> <max>")
             return
-        import shlex
         name = parts[0]
         try:
             maximum = int(parts[1])
@@ -711,12 +641,12 @@ Shorthand commands (usable outside 'combat ...'):
         if c is None:
             print(f"[!] Combatant '{name}' not found.")
             return
-        if c.combatant_type not in ("npc", "monster"):
+        if c.type not in (Type.NPC, Type.MONSTER):
             print(f"[!] Legendary actions can only be assigned to NPCs and monsters.")
             return
         msg = c.add_resource("legendary_actions", maximum)
         print(f"[+] {msg}")
-        self._log_entry(f"[combat legendary] {c.name}: Legendary Actions set to {maximum}")
+        self._log.log_entry(f"[combat legendary] {c.name}: Legendary Actions set to {maximum}")
         self._push_combat()
 
     def _cmd_combat_add(self, parts: list[str]):
@@ -734,7 +664,7 @@ Shorthand commands (usable outside 'combat ...'):
             print("[!] initiative, hp_max, and hp_current must be integers.")
             return
 
-        if ctype not in ("pc", "npc", "monster"):
+        if ctype not in Type:
             print("[!] type must be one of: pc  npc  monster")
             return
 
@@ -759,7 +689,7 @@ Shorthand commands (usable outside 'combat ...'):
             ties = self._combat.tied_initiatives()
             if init in ties:
                 self._resolve_ties_for(init, ties[init])
-            self._log_entry(f"[combat add] {c.summary()}")
+            self._log.log_entry(f"[combat add] {c.summary()}")
             self._push_combat()
             # Note: if this overwrote a left_combat entry, combat.py handled removal
 
@@ -773,27 +703,26 @@ Shorthand commands (usable outside 'combat ...'):
             new_round = "begins!" in msg
             current = self._combat.current_combatant()
             if current:
-                self._log_turn_marker(current.name, self._combat.round, new_round=new_round)
+                self._log.log_turn_marker(current.name, self._combat.round, new_round=new_round)
             self._push_combat(page=self._page_of_current())
 
     def _page_of_current(self) -> int | None:
         """Return the 0-based page index of the current combatant, or None if unknown."""
-        from shell_app.combat_view import PAGE_SIZE
         current = self._combat.current_combatant()
         if current is None:
             return None
         snap = self._combat.snapshot()
-        combatants = snap["combatants"]
+        combatants: list[Combatant] = snap["combatants"]
         revealed   = [e for e in combatants
-                      if not e.get("pending", False)
-                      and (e["type"] != "monster" or e.get("has_acted", True))]
+                      if not e.pending
+                      and (e.type is Type.MONSTER or e.has_acted)]
         unrevealed = [e for e in combatants
-                      if e.get("pending", False)
-                      or (e["type"] == "monster" and not e.get("has_acted", True))]
+                      if e.pending
+                      or (e.type is Type.MONSTER and not e.has_acted)]
         ordered = revealed + unrevealed
         for i, e in enumerate(ordered):
-            if e["name"] == current.name:
-                return i // PAGE_SIZE
+            if e.name == current.name:
+                return i // MIN_PAGE_SIZE
         return None
 
     # ── hp ────────────────────────────────────────────────────────────────────
@@ -804,11 +733,7 @@ Usage:
   hp <name> <±amount>    e.g.  hp Aria -15   hp Goblin +5
   hp <name> = <amount>   e.g.  hp Aria = 80  (set to exact value)
 """
-        import shlex
-        try:
-            parts = shlex.split(arg.strip())
-        except ValueError:
-            parts = arg.strip().split()
+        parts = get_arg_parts(arg)
         if len(parts) < 2:
             print("Usage: hp <name> <±amount>  |  hp <name> = <amount>")
             return
@@ -832,7 +757,7 @@ Usage:
 
         print(f"[+] {msg}")
         self._apply_zero_hp_status(c)
-        self._log_entry(f"[hp] {msg}")
+        self._log.log_entry(f"[hp] {msg}")
         self._push_combat()
 
     # ── maxhp ────────────────────────────────────────────────────────────────
@@ -842,11 +767,7 @@ Usage:
 Usage:
   maxhp <name> <new_max>    e.g.  maxhp Aria 140
 """
-        import shlex
-        try:
-            parts = shlex.split(arg.strip())
-        except ValueError:
-            parts = arg.strip().split()
+        parts = get_arg_parts(arg)
 
         if len(parts) < 2:
             print("Usage: maxhp <name> <new_max>")
@@ -871,10 +792,10 @@ Usage:
         old_max = c.hp_max
         c.hp_max = new_max
         print(f"[+] {name} max HP: {old_max} → {new_max}")
-        self._log_entry(f"[maxhp] {name} max HP: {old_max} → {new_max}")
+        self._log.log_entry(f"[maxhp] {name} max HP: {old_max} → {new_max}")
         self._push_combat()
 
-    def complete_maxhp(self, text, line, begidx, endidx):
+    def complete_maxhp(self, text, line, begidx, endidx) -> list[str]:
         names = [c.name for c in self._combat.combatants]
         return [n for n in names if n.lower().startswith(text.lower())]
 
@@ -894,12 +815,7 @@ Examples:
   resource Vecna "Legendary Actions" -1
   resource reset Vecna
 """
-        # Tokenise, respecting quoted strings
-        import shlex
-        try:
-            parts = shlex.split(arg.strip())
-        except ValueError:
-            parts = arg.strip().split()
+        parts = get_arg_parts(arg)
 
         if not parts:
             print("Usage: resource add|reset|list|<name> …  Type 'help resource'.")
@@ -924,7 +840,7 @@ Examples:
                 return
             msg = c.add_resource(res_name, maximum)
             print(f"[+] {msg}")
-            self._log_entry(f"[resource add] {msg}")
+            self._log.log_entry(f"[resource add] {msg}")
             self._push_combat()
 
         elif sub == "reset":
@@ -937,7 +853,7 @@ Examples:
                 return
             c.reset_resources()
             print(f"[+] Resources reset for {c.name}.")
-            self._log_entry(f"[resource reset] All resources reset for {c.name}.")
+            self._log.log_entry(f"[resource reset] All resources reset for {c.name}.")
             self._push_combat()
 
         elif sub == "list":
@@ -974,7 +890,7 @@ Examples:
                 return
             msg = c.adjust_resource(res_name, delta)
             print(f"[+] {msg}")
-            self._log_entry(f"[resource] {msg}")
+            self._log.log_entry(f"[resource] {msg}")
             self._push_combat()
 
     # ── condition ─────────────────────────────────────────────────────────────
@@ -990,11 +906,7 @@ Examples:
   condition add "Dark Knight" "Magically Silenced"
   condition remove Aria Poisoned
 """
-        import shlex
-        try:
-            parts = shlex.split(arg.strip())
-        except ValueError:
-            parts = arg.strip().split()
+        parts = get_arg_parts(arg)
 
         if len(parts) < 2:
             print("Usage: condition add|remove|list <name> [condition]")
@@ -1024,22 +936,18 @@ Examples:
         if sub == "add":
             msg = c.add_condition(condition)
             print(f"[+] {msg}")
-            self._log_entry(f"[condition add] {msg}")
+            self._log.log_entry(f"[condition add] {msg}")
             self._push_combat()
         elif sub == "remove":
             msg = c.remove_condition(condition)
             print(f"[+] {msg}")
-            self._log_entry(f"[condition remove] {msg}")
+            self._log.log_entry(f"[condition remove] {msg}")
             self._push_combat()
         else:
             print(f"[!] Unknown sub-command '{sub}'. Use add, remove, or list.")
 
-    def complete_condition(self, text, line, begidx, endidx):
-        import shlex
-        try:
-            parts = shlex.split(line[:begidx])
-        except ValueError:
-            parts = line[:begidx].split()
+    def complete_condition(self, text, line, begidx, endidx) -> list[str]:
+        parts = get_arg_parts(line[:begidx])
 
         # Position 1: sub-command
         if len(parts) == 1:
@@ -1071,17 +979,17 @@ Usage:
 """
         arg = arg.strip().lower()
         if arg == "next":
-            self.command_queue.put(("page_next", None))
+            self._push_command("page_next", None)
         elif arg == "prev":
-            self.command_queue.put(("page_prev", None))
+            self._push_command("page_prev", None)
         else:
             try:
                 n = int(arg)
-                self.command_queue.put(("page_set", n - 1))  # convert to 0-based
+                self._push_command("page_set", n - 1)  # convert to 0-based
             except ValueError:
                 print("Usage: page next | page prev | page <number>")
 
-    def complete_page(self, text, line, begidx, endidx):
+    def complete_page(self, text, line, begidx, endidx) -> list[str]:
         options = ["next", "prev"]
         return [o for o in options if o.startswith(text)]
 
@@ -1089,32 +997,28 @@ Usage:
 
     def do_exit(self, arg):
         """Close the application."""
-        self.command_queue.put(("exit", None))
+        self._push_command("exit", None)
         print("Exiting shell.")
         return True
 
     # ── Tab completion ────────────────────────────────────────────────────────
 
-    def complete_show(self, text, line, begidx, endidx):
+    def complete_show(self, text, line, begidx, endidx) -> list[str]:
         if current_os == "Linux" and len(line.split()) > 1:
             clean_text = line.split()[1]
         else:
             clean_text = text
         return tab_completion(clean_text, list(Image.registered_extensions()), current_os, 'image')
 
-    def complete_play(self, text, line, begidx, endidx):
+    def complete_play(self, text, line, begidx, endidx) -> list[str]:
         if current_os == "Linux" and len(line.split()) > 1:
             clean_text = line.split()[1]
         else:
             clean_text = text
         return tab_completion(clean_text, [".mp3", ".wav", ".ogg"], current_os, 'audio')
 
-    def complete_combat(self, text, line, begidx, endidx):
-        import shlex
-        try:
-            parts = shlex.split(line[:begidx])
-        except ValueError:
-            parts = line[:begidx].split()
+    def complete_combat(self, text, line, begidx, endidx) -> list[str]:
+        parts = get_arg_parts(line[:begidx])
 
         top_subs = ["new", "add", "start", "status", "end", "show", "screen",
                     "noreaction", "reset", "legendary", "action", "log", "export", "import", "image", "remove"]
@@ -1125,7 +1029,6 @@ Usage:
 
         if parts[1].lower() in ("import", "export"):
             if len(parts) == 2:
-                import glob, os
                 pattern = os.path.join("combatants", text + "*.json")
                 matches = glob.glob(pattern)
                 return [os.path.splitext(os.path.basename(m))[0] for m in matches]
@@ -1142,10 +1045,8 @@ Usage:
             if len(parts) == 2:
                 return [n for n in names if n.lower().startswith(text.lower())]
             if len(parts) == 3:
-                from shell_app.utils import tab_completion
-                from PIL import Image as PilImage
                 clean = line.split()[-1] if not line.endswith(" ") else ""
-                return tab_completion(clean, list(PilImage.registered_extensions()),
+                return tab_completion(clean, list(Image.registered_extensions()),
                                       current_os, "combatant_image")
             return []
 
@@ -1175,16 +1076,12 @@ Usage:
 
         return []
 
-    def complete_hp(self, text, line, begidx, endidx):
+    def complete_hp(self, text, line, begidx, endidx) -> list[str]:
         names = [c.name for c in self._combat.combatants]
         return [n for n in names if n.lower().startswith(text.lower())]
 
-    def complete_resource(self, text, line, begidx, endidx):
-        import shlex
-        try:
-            parts = shlex.split(line[:begidx])
-        except ValueError:
-            parts = line[:begidx].split()
+    def complete_resource(self, text, line, begidx, endidx) -> list[str]:
+        parts = get_arg_parts(line[:begidx])
 
         # Position 1: sub-command or combatant name
         if len(parts) == 1:
@@ -1211,8 +1108,8 @@ Usage:
 
         return []
 
-    def complete_next(self, text, line, begidx, endidx):
+    def complete_next(self, text, line, begidx, endidx) -> list[str]:
         return []
 
-    def completenames(self, text, *ignored):
+    def completenames(self, text, *ignored) -> list[str]:
         return [cmd for cmd in self.commands_list if cmd.startswith(text)]

@@ -1,0 +1,10 @@
+some thoughts:
+
+add logs/ to .gitignore to not commit them.
+idea: ImmageShell -> Handle quit event, make non-daemon thread to be able to implement auto-save on quit.
+combatView -> the new architecture would allow us to start using grid instead of place to have multiple columns if desired
+
+TODO: rewrite page_clamping as it is AI bs triple doing the same functionality.
+TODO: rewrite logging structure -> combat logs done through combat to be able to standardise
+--> create scopes inside of log that add prefixes
+    |--> allows for analyser to only pick lines it is interested in while still logging more

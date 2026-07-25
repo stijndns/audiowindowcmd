@@ -4,7 +4,7 @@ from screeninfo import get_monitors
 import os
 import platform
 
-from shell_app.views.combat_view import CombatView
+from tablescreen.features.combat.views.combat_view import CombatView
 
 current_os = platform.system()
 

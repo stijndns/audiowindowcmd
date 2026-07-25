@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import tkinter as tk
 
-from .utils import get_arg_parts, tab_completion
-from .combat import Combat, Combatant, Type, Status
-from .views.combat_view import MIN_PAGE_SIZE
-from .log import CombatLog
+from tablescreen.core.completion import get_arg_parts, tab_completion
+from tablescreen.features.combat import Combat, Combatant, Type, Status
+from tablescreen.features.combat.views.styling import MIN_PAGE_SIZE
+from tablescreen.features.combat.log import CombatLog
 
 current_os = platform.system()
 

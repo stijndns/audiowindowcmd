@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 from PIL import ImageTk, Image
 
 from .styling import *
-from ..combat import Type, Status
+from ..model.combatant import Type, Status
 
 if TYPE_CHECKING:
-    from ..combat import Combatant
+    from ..model.combatant import Combatant
 
 INITIATIVE_W    = 52
 class CombatantView(tk.Canvas):

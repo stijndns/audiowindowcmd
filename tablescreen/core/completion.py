@@ -5,11 +5,11 @@ import shlex
 def tab_completion(text, allowed_filetypes, current_os, completion_type) -> list[str]:
     # Expand relative paths relative to parent folder
     if completion_type == 'image':
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/images"))
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../assets/images"))
     elif completion_type == 'audio':
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/audio"))
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../assets/audio"))
     elif completion_type == 'combatant_image':
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/images/combatants"))
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../assets/images/combatants"))
     else:
         return []
 

@@ -1,0 +1,12 @@
+# Tablescreen configuration.
+#
+# Edit `enabled` to choose which features load. A disabled feature's code is
+# never imported, its commands never appear, and its windows are never
+# created — so running a non-D&D game is just a matter of removing "combat"
+# from the list.
+
+[features]
+enabled = ["hello"]
+
+[features.hello]
+window = "player"

@@ -6,7 +6,7 @@
 # from the list.
 
 [features]
-enabled = ["hello"]
+enabled = ["audiowindow"]
 
-[features.hello]
+[features.audiowindow]
 window = "player"

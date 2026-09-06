@@ -6,7 +6,13 @@
 # from the list.
 
 [features]
-enabled = ["audiowindow"]
+enabled = ["audiowindow", "combat"]
 
 [features.audiowindow]
-window = "player"
+window = "mainscreen"
+
+[features.combat]
+window = "mainscreen"
+
+[windows]
+mainscreen = "800x600"

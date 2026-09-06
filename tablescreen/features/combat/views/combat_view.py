@@ -9,7 +9,7 @@ import tkinter as tk
 import math
 
 from .styling import *
-from ..model.combatant import Combatant, Type
+from ..model import Combatant, Type
 from .combatant_view import CombatantView
 from typing import Tuple
 

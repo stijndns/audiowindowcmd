@@ -6,7 +6,7 @@
 # from the list.
 
 [features]
-enabled = ["audiowindow", "combat"]
+enabled = ["audiowindow", "combat", "battlemap"]
 
 [features.audiowindow]
 window = "mainscreen"
@@ -14,5 +14,9 @@ window = "mainscreen"
 [features.combat]
 window = "mainscreen"
 
+[features.battlemap]
+window = "battlemap"
+
 [windows]
 mainscreen = "800x600"
+battlemap = "1200x900"

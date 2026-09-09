@@ -147,7 +147,7 @@ class FeatureBase:
 
     # ── Helpers most features want ────────────────────────────────────────
 
-    def refresh(self) -> None:
+    def refresh(self, *args, **kwargs) -> None:
         """Re-render every view from the current state.
 
         Features override ``snapshot()`` and let this fan it out, so adding a
@@ -158,7 +158,7 @@ class FeatureBase:
             return
         for view in self.views:
             try:
-                view.render(snapshot)
+                view.render(snapshot, *args, **kwargs)
             except Exception as exc:
                 print(f"[!] {self.name}: view render failed: {exc}")
 
